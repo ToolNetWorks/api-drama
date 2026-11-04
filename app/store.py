@@ -36,7 +36,8 @@ class _DBWrapper:
         if self._is_pg:
             # Convert ? placeholders to %s for PostgreSQL
             query = query.replace("?", "%s")
-            cur = self._conn.cursor()
+            import psycopg2.extras
+            cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
             cur.execute(query, params)
             return cur
         else:

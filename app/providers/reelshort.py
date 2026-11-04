@@ -1,28 +1,19 @@
 import json
 import re
-import sqlite3
 from datetime import datetime, timezone
-from pathlib import Path
 from urllib.parse import urljoin
 
 import httpx
 from bs4 import BeautifulSoup
 
+from app.store import connect as store_connect
+
 BASE_URL = "https://www.reelshort.com/"
-DB_PATH = Path(__file__).resolve().parents[2] / "data" / "reelshort.sqlite3"
 
 
 def connect():
-    DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(DB_PATH)
-    db.row_factory = sqlite3.Row
-    db.execute("""CREATE TABLE IF NOT EXISTS series (
-        book_id TEXT PRIMARY KEY, t_book_id TEXT, title TEXT NOT NULL,
-        poster TEXT, description TEXT, chapter_count INTEGER,
-        paid_start INTEGER, tags TEXT NOT NULL, shelves TEXT NOT NULL,
-        first_chapter_id TEXT, read_count INTEGER, updated_at TEXT NOT NULL
-    )""")
-    return db
+    """Use main store connection (Layerbase PostgreSQL)."""
+    return store_connect()
 
 
 def parse_homepage(html):
@@ -87,7 +78,7 @@ async def scan_reelshort():
         for m in movies:
             db.execute("""INSERT INTO series
             (book_id,t_book_id,title,poster,description,chapter_count,paid_start,tags,shelves,first_chapter_id,read_count,updated_at)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
             ON CONFLICT(book_id) DO UPDATE SET
             t_book_id=COALESCE(excluded.t_book_id,series.t_book_id), title=excluded.title,
             poster=COALESCE(excluded.poster,series.poster), description=COALESCE(excluded.description,series.description),
@@ -99,7 +90,7 @@ async def scan_reelshort():
             (m["book_id"],m["t_book_id"],m["title"],m["poster"],m["description"],
              m["chapter_count"],m["paid_start"],json.dumps(m["tags"]),json.dumps(m["shelves"]),
              m["first_chapter_id"],m["read_count"],now))
-    return {"scanned": len(movies), "database": str(DB_PATH)}
+    return {"scanned": len(movies), "database": "layerbase-postgresql"}
 
 
 def row_to_dict(row):
