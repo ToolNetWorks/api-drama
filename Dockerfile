@@ -13,6 +13,10 @@ FROM python:${PYTHON_VERSION}-slim AS runtime
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PIP_NO_CACHE_DIR=1
 ENV DB_PATH=/srv/data/reelshort.sqlite3 LOG_FILE=/srv/logs/api-drama.log
 WORKDIR /srv
+# Install runtime dependencies for argon2-cffi, libsql, psycopg2-binary
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libffi8 libpq5 \
+    && rm -rf /var/lib/apt/lists/*
 # Non-root user matching host ubuntu (uid/gid 1000) so bind mounts stay writable.
 RUN groupadd -g 1000 appuser && useradd -u 1000 -g 1000 -m -s /usr/sbin/nologin appuser \
     && mkdir -p /srv/data /srv/logs && chown -R 1000:1000 /srv
