@@ -150,8 +150,33 @@ def v1_health():
         info["upstream"] = {"provider": "reelshort",
                             "strategy": cfg.get("strategy"),
                             "connections": len(rows), "healthy": healthy}
-    except (OSError, Exception):
-        info["upstream"] = {"provider": "reelshort", "connections": "unknown"}
+    except Exception as e:
+        info["upstream"] = {"provider": "reelshort", "connections": "unknown", "error": str(e)}
+
+
+@app.get("/v1/debug/db")
+def v1_debug_db():
+    """Debug database connection."""
+    from app.store import connect as _connect
+    from app.core.config import settings
+    try:
+        db = _connect()
+        info = {
+            "use_postgres": settings.use_postgres,
+            "use_libsql": settings.use_libsql,
+            "database_url_set": bool(settings.database_url),
+            "database_url_prefix": settings.database_url[:50] if settings.database_url else None,
+        }
+        # Test query
+        rows = db.execute("SELECT 1 as test").fetchall()
+        info["query_test"] = "OK" if rows else "FAIL"
+        # Test provider_connections
+        rows = db.execute("SELECT COUNT(*) as c FROM provider_connections WHERE provider='reelshort'").fetchall()
+        info["provider_connections_count"] = rows[0]["c"] if rows else 0
+        return {"ok": True, "info": info}
+    except Exception as e:
+        import traceback
+        return {"ok": False, "error": str(e), "traceback": traceback.format_exc()}
     # Status word only (no host/secrets). Turso trouble never flips the overall `ok`.
     try:
         from app import episode_cache as _ec
