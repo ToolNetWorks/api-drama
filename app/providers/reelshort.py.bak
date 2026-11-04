@@ -1,0 +1,43 @@
+import httpx
+from bs4 import BeautifulSoup
+
+BASE_URL = "https://www.reelshort.com"
+
+async def scan_reelshort():
+    async with httpx.AsyncClient(
+        timeout=30,
+        follow_redirects=True,
+        headers={"User-Agent": "Mozilla/5.0"}
+    ) as client:
+        response = await client.get(BASE_URL)
+        response.raise_for_status()
+
+    soup = BeautifulSoup(response.text, "html.parser")
+    results = []
+    seen = set()
+
+    for link in soup.select("a[href]"):
+        href = link.get("href", "")
+
+        if "/movie/" not in href:
+            continue
+
+        url = str(httpx.URL(BASE_URL).join(href))
+        if url in seen:
+            continue
+
+        seen.add(url)
+
+        image = link.find("img")
+        title = (
+            link.get_text(" ", strip=True)
+            or (image.get("alt", "") if image else "")
+        )
+
+        results.append({
+            "title": title,
+            "url": url,
+            "poster": image.get("src") if image else None
+        })
+
+    return results

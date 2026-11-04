@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ToolNet Drama — Episode Cache</title>
+<link rel="stylesheet" href="/static/admin/admin.css">
+</head>
+<body>
+<div class="container">
+  <!-- ============ SERIES LIST ============ -->
+  <div id="view-list">
+    <div class="page-head">
+      <div>
+        <h1>Episode Cache</h1>
+        <p>Cached series in Turso. Video URLs stay internal and are never served to customers.</p>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn ghost sm" id="refresh">Refresh</button>
+    </div>
+    <div class="kpi-strip" id="kpis"></div>
+    <div class="err" id="s_err" style="margin-top:8px;"></div>
+    <div class="section-label">Cached series</div>
+    <div class="series-list" id="series_list"></div>
+    <div class="pager">
+      <button class="btn ghost sm" id="s_prev">‹ Prev</button>
+      <span class="note" id="s_info"></span>
+      <button class="btn ghost sm" id="s_next">Next ›</button>
+    </div>
+  </div>
+
+  <!-- ============ SERIES DETAIL ============ -->
+  <div id="view-detail" class="hidden">
+    <a class="back-link" href="#/" id="back_link">&larr; Back to series</a>
+    <div class="page-head">
+      <div style="display:flex;align-items:center;gap:12px;min-width:0;">
+        <span class="mono-mark" id="d_poster" style="width:44px;height:60px;border-radius:6px;display:grid;place-items:center;overflow:hidden;background:#20242c;border:1px solid var(--border-2);font-weight:700;">—</span>
+        <div style="min-width:0;">
+          <h1 id="d_title">Series</h1>
+          <p id="d_sub">—</p>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn ghost sm" id="inv_series">Invalidate series</button>
+    </div>
+    <div class="err" id="d_err"></div>
+    <div class="section-label">Episodes</div>
+    <div class="ep-list" id="ep_list"></div>
+    <p class="note" id="ep_more" style="margin-top:8px;"></p>
+  </div>
+</div>
+
+<script src="/static/admin/admin.js"></script>
+<script>
+(function () {
+"use strict";
+var esc = TN.esc, ts = TN.ts, num = TN.num;
+var S_OFFSET = 0, S_LIMIT = 25, S_HAS_MORE = false;
+var curProv = null, curSid = null;
+var listFilter = "";
+
+TN.mountShell("cache", {
+  search: true,
+  searchPlaceholder: "Search series",
+  onSearch: function (v) {
+    listFilter = v || "";
+    if (!document.getElementById("view-list").classList.contains("hidden")) {
+      S_OFFSET = 0;
+      loadSeries();
+    }
+  }
+});
+
+function show(view) {
+  document.getElementById("view-list").classList.toggle("hidden", view !== "list");
+  document.getElementById("view-detail").classList.toggle("hidden", view !== "detail");
+}
+function monoOf(title, sid) {
+  var t = (title || "").trim();
+  if (t && t !== "—") {
+    var parts = t.split(/\s+/).slice(0, 2);
+    return esc(parts.map(function (w) { return w[0]; }).join("").toUpperCase());
+  }
+  return esc((sid || "?").slice(0, 2).toUpperCase());
+}
+function videoBadge(has, state) {
+  if (!has) return '<span class="badge plain">No URL</span>';
+  if (state === "fresh") return '<span class="badge ok">Stored</span>';
+  return '<span class="badge warn">Expired</span>';
+}
+
+function route() {
+  var h = (location.hash || "#/").replace(/^#\/?/, "");
+  if (!h) { show("list"); return; }
+  var i = h.indexOf("/");
+  if (i > 0) openDetail(decodeURIComponent(h.slice(0, i)), decodeURIComponent(h.slice(i + 1)));
+  else show("list");
+}
+window.addEventListener("hashchange", route);
+
+async function loadStatus() {
+  try {
+    var j = await TN.api("/admin/api/cache/status");
+    var s = j.stats;
+    if (s && s.available) {
+      document.getElementById("kpis").innerHTML =
+        '<div class="kpi"><div class="v">' + esc(num(s.series_total || 0)) + '</div><div class="l">Series cached</div></div>'
+        + '<div class="kpi"><div class="v">' + esc(num(s.total_rows)) + '</div><div class="l">Episodes cached</div></div>'
+        + '<div class="kpi"><div class="v">' + esc(s.hit_rate_pct == null ? "—" : s.hit_rate_pct + "%") + '</div><div class="l">Hit rate</div><div class="s">' + esc(num(s.cache_hits)) + " HIT · " + esc(num(s.cache_misses)) + " MISS</div></div>"
+        + '<div class="kpi"><div class="v">' + esc(TN.bytes(s.db_size_bytes)) + '</div><div class="l">DB size</div><div class="s">est. saved ' + esc(num(s.estimated_upstream_saved)) + "</div></div>";
+    } else {
+      document.getElementById("kpis").innerHTML = '<div class="empty">Cache stats unavailable' + (j.stats_error ? ": " + esc(j.stats_error) : "") + ".</div>";
+    }
+  } catch (err) {
+    document.getElementById("kpis").innerHTML = '<div class="empty">Turso status unavailable: ' + esc(err.message) + ".</div>";
+  }
+}
+
+async function loadSeries() {
+  var e = document.getElementById("s_err");
+  e.textContent = "";
+  var p = new URLSearchParams({ limit: S_LIMIT, offset: S_OFFSET, q: listFilter.trim() });
+  try {
+    var j = await TN.api("/admin/api/cache/series?" + p);
+    S_HAS_MORE = !!j.has_more;
+    var items = j.items || [];
+    document.getElementById("series_list").innerHTML = items.map(function (s) {
+      var title = s.series_title || s.series_id;
+      return '<button class="series-row" data-prov="' + esc(s.provider) + '" data-sid="' + esc(s.series_id) + '">'
+        + '<span class="mono-mark">' + monoOf(s.series_title, s.series_id) + "</span>"
+        + '<span class="meta"><span class="name">' + esc(title) + "</span>"
+        + '<span class="sub">' + esc(s.provider) + " · total " + esc(s.episode_count == null ? "—" : s.episode_count)
+        + " · cached " + esc(s.episodes_tracked || 0) + " · video " + esc(s.episodes_with_fresh_video || 0)
+        + " · synced " + esc(ts(s.updated_at)) + "</span></span>"
+        + '<span class="side">' + videoBadge((s.episodes_with_fresh_video || 0) > 0, (s.episodes_with_fresh_video || 0) > 0 ? "fresh" : "none") + "</span></button>";
+    }).join("") || '<div class="empty">No series cached yet.</div>';
+    document.querySelectorAll("#series_list .series-row").forEach(function (b) {
+      b.addEventListener("click", function () {
+        location.hash = "#/" + encodeURIComponent(b.dataset.prov) + "/" + encodeURIComponent(b.dataset.sid);
+      });
+    });
+    document.getElementById("s_prev").disabled = S_OFFSET === 0;
+    document.getElementById("s_next").disabled = !S_HAS_MORE;
+    document.getElementById("s_info").textContent = items.length ? "rows " + (S_OFFSET + 1) + "–" + (S_OFFSET + items.length) : "";
+  } catch (err) { e.textContent = err.message; }
+}
+
+async function openDetail(prov, sid) {
+  curProv = prov; curSid = sid;
+  show("detail");
+  var e = document.getElementById("d_err");
+  e.textContent = "";
+  try {
+    var j = await TN.api("/admin/api/cache/series/" + encodeURIComponent(prov) + "/" + encodeURIComponent(sid));
+    var s = j.series;
+    document.getElementById("d_title").textContent = s.series_title || s.series_id;
+    document.getElementById("d_sub").textContent =
+      s.provider + " · total " + (s.episode_count == null ? "—" : s.episode_count)
+      + " · tracked " + (s.episodes_tracked || 0) + " · detailed " + (s.episodes_detailed || 0)
+      + " · fresh video " + (s.episodes_with_fresh_video || 0) + " · synced " + ts(s.updated_at);
+    var poster = document.getElementById("d_poster");
+    if (s.series_pic) {
+      poster.innerHTML = "";
+      var img = document.createElement("img");
+      img.src = s.series_pic;
+      img.alt = "";
+      img.referrerPolicy = "no-referrer";
+      poster.appendChild(img);
+    } else {
+      poster.textContent = monoOf(s.series_title, s.series_id);
+    }
+    var eps = j.episodes || [];
+    document.getElementById("ep_list").innerHTML = eps.map(function (ep) {
+      var exp = ep.video_state === "fresh" ? ts(ep.video_url_expires_at)
+        : (ep.video_state === "expired" ? "expired" : "—");
+      return '<div class="ep-row" data-epid="' + esc(ep.episode_id) + '">'
+        + '<span class="ep-n">E' + esc(ep.episode_number == null ? "—" : ep.episode_number) + "</span>"
+        + '<span class="ep-id">' + esc(ep.episode_id) + "</span>"
+        + '<span class="ep-extra">' + esc(ep.duration == null ? "—" : ep.duration + "s") + "</span>"
+        + '<span class="ep-extra">' + esc(ep.hit_count || 0) + " hits</span>"
+        + '<span>' + videoBadge(ep.has_video_url, ep.video_state) + '<br><span class="faint" style="font-size:11px;">' + esc(exp) + "</span></span>"
+        + '<span style="display:flex;gap:2px;justify-content:flex-end;">'
+        + '<button class="mini-btn" data-a="refresh">Refresh</button>'
+        + '<button class="mini-btn danger" data-a="delete">Delete</button></span></div>';
+    }).join("") || '<div class="empty">No episodes tracked.</div>';
+    document.getElementById("ep_more").textContent = j.has_more_episodes ? "Showing first " + eps.length + " episodes." : "";
+    document.querySelectorAll("#ep_list .ep-row").forEach(function (row) {
+      row.querySelectorAll("button").forEach(function (b) {
+        b.addEventListener("click", function (ev) { epAction(row.dataset.epid, b.dataset.a, ev.currentTarget); });
+      });
+    });
+  } catch (err) { e.textContent = err.message; }
+}
+
+/* Roster rows carry no row id: resolve via the entries search (existing contract). */
+async function resolveRowId(epId) {
+  var p = new URLSearchParams({ provider: curProv, q: epId, limit: 100, offset: 0 });
+  var j = await TN.api("/admin/api/cache/entries?" + p);
+  var items = j.items || [];
+  for (var i = 0; i < items.length; i++) {
+    if (items[i].episode_id === epId && items[i].series_id === curSid) return items[i].id;
+  }
+  throw new Error("Cache entry not found for this episode");
+}
+
+async function epAction(epId, a, btn) {
+  var e = document.getElementById("d_err");
+  e.textContent = "";
+  try {
+    await TN.withBusy(btn, async function () {
+      var id = await resolveRowId(epId);
+      if (a === "refresh") {
+        if (!confirm("Refresh this episode from upstream? This consumes one RapidAPI request.")) return;
+        var j = await TN.api("/admin/api/cache/entries/" + id + "/refresh", { method: "POST" });
+        TN.toast("Refreshed (source: " + j.source + ")", "ok");
+      } else if (a === "delete") {
+        if (!confirm("Delete this cache entry? The next request will call upstream.")) return;
+        await TN.api("/admin/api/cache/entries/" + id, { method: "DELETE" });
+        TN.toast("Entry deleted", "warn");
+      }
+    });
+    await openDetail(curProv, curSid);
+    await loadStatus();
+  } catch (err) { e.textContent = err.message; TN.toast(TN.shortErr(err), "bad"); }
+}
+
+document.getElementById("s_prev").addEventListener("click", function () { S_OFFSET = Math.max(0, S_OFFSET - S_LIMIT); loadSeries(); });
+document.getElementById("s_next").addEventListener("click", function () { if (S_HAS_MORE) { S_OFFSET += S_LIMIT; loadSeries(); } });
+document.getElementById("refresh").addEventListener("click", function (ev) {
+  TN.withBusy(ev.currentTarget, async function () { S_OFFSET = 0; await Promise.all([loadStatus(), loadSeries()]); });
+});
+document.getElementById("inv_series").addEventListener("click", async function () {
+  var e = document.getElementById("d_err");
+  e.textContent = "";
+  if (!curProv || !curSid) return;
+  if (!confirm("Invalidate all cached episodes of this series?")) return;
+  try {
+    var j = await TN.api("/admin/api/cache/series/invalidate",
+      { method: "POST", body: JSON.stringify({ provider: curProv, series_id: curSid }) });
+    TN.toast(j.invalidated + " episode(s) invalidated", "ok");
+    await openDetail(curProv, curSid);
+  } catch (err) { e.textContent = err.message; }
+});
+
+loadStatus();
+loadSeries();
+route();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ToolNet Drama — Overview</title>
+<link rel="stylesheet" href="/static/admin/admin.css">
+</head>
+<body>
+<div class="container">
+  <div class="page-head">
+    <div>
+      <h1>Overview</h1>
+      <p>Gateway health, traffic and cache performance.</p>
+    </div>
+    <div class="spacer"></div>
+    <button class="btn ghost sm" id="refresh">Refresh</button>
+  </div>
+  <div class="err" id="e"></div>
+
+  <div class="kpi-strip" id="kpis"></div>
+
+  <div class="stack" style="margin-top:12px;">
+    <section class="card panel">
+      <div class="panel-head"><h2>Traffic</h2><span class="hint">Requests per day · last 14 days · ok vs errors</span></div>
+      <div class="chart" id="chart"></div>
+      <div class="chart-legend"><span><i style="background:#6b7078"></i>Successful</span><span><i style="background:var(--bad)"></i>Errors</span></div>
+    </section>
+
+    <section class="card panel">
+      <div class="panel-head"><h2>Cache vs upstream</h2><span class="hint">lifetime totals from request logs</span></div>
+      <div id="split"></div>
+    </section>
+
+    <section class="card panel">
+      <div class="panel-head"><h2>Provider health</h2><span class="spacer"></span><span class="hint" id="ph_hint"></span></div>
+      <div id="phealth"></div>
+    </section>
+
+    <section class="card panel">
+      <div class="panel-head"><h2>Recent traffic</h2><span class="hint">per-day aggregates from request logs</span></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Day</th><th>Total</th><th>OK</th><th>Errors</th><th>Error rate</th></tr></thead>
+        <tbody id="recent"></tbody>
+      </table></div>
+    </section>
+
+    <section class="card panel">
+      <div class="panel-head"><h2>Top customer keys</h2></div>
+      <div class="table-wrap"><table>
+        <thead><tr><th>Customer</th><th>Prefix</th><th>Requests</th></tr></thead>
+        <tbody id="keys"></tbody>
+      </table></div>
+    </section>
+  </div>
+</div>
+
+<script src="/static/admin/admin.js"></script>
+<script>
+(function () {
+"use strict";
+var esc = TN.esc, num = TN.num;
+
+TN.mountShell("overview");
+
+function kpi(v, l, s) {
+  return '<div class="kpi"><div class="v">' + esc(v) + '</div><div class="l">' + esc(l) + "</div>"
+    + (s ? '<div class="s">' + esc(s) + "</div>" : "") + "</div>";
+}
+
+async function load() {
+  var e = document.getElementById("e");
+  e.textContent = "";
+  try {
+    var j = await TN.api("/admin/api/stats/overview");
+    var t = j.totals || { total: 0, ok: 0, errors: 0 };
+    var served = j.cache_served || 0;
+    var upstream = j.upstream_calls || 0;
+    var rate = t.total ? Math.round(t.ok * 1000 / t.total) / 10 : 100;
+
+    var cache = null;
+    try { cache = await TN.api("/admin/api/cache/status"); } catch (_) {}
+    var cs = (cache && cache.stats && cache.stats.available) ? cache.stats : null;
+    var hitRate = cs && cs.hit_rate_pct != null ? cs.hit_rate_pct + "%" : "—";
+
+    document.getElementById("kpis").innerHTML =
+      kpi(num(t.total), "Total requests", "lifetime") +
+      kpi(rate + "%", "Success rate", num(t.errors) + " errors") +
+      kpi(num(served), "Cache HIT", "hit rate " + hitRate) +
+      kpi(num(upstream), "Upstream usage", "RapidAPI calls");
+
+    // Per-day chart: stacked ok (gray) + errors (red), real data.
+    var days = (j.days || []).slice().reverse();
+    var max = Math.max(1, ...days.map(function (d) { return d.total; }));
+    document.getElementById("chart").innerHTML = days.map(function (d) {
+      var h = Math.max(4, Math.round(d.total / max * 128));
+      var okH = d.total ? Math.round(d.ok / d.total * (h - 2)) : 0;
+      var errH = Math.max(d.errors ? 2 : 0, h - 2 - okH);
+      return '<div class="col" title="' + esc(d.day) + ": " + d.total + " total · " + d.ok + " ok · " + d.errors + ' errors">'
+        + '<span class="stack-bars" style="height:' + h + 'px">'
+        + '<b style="height:' + okH + 'px"></b><b class="e" style="height:' + errH + 'px"></b>'
+        + "</span><span>" + esc(String(d.day).slice(5)) + "</span></div>";
+    }).join("") || '<div class="empty">No traffic recorded yet.</div>';
+
+    // Cache vs upstream split bar (real lifetime totals).
+    var tot = served + upstream;
+    var sp = tot ? Math.round(served * 100 / tot) : 0;
+    document.getElementById("split").innerHTML =
+      '<div class="bar ok" style="height:8px;"><i style="width:' + sp + '%"></i></div>'
+      + '<p class="note" style="margin:8px 0 0;">' + num(served) + " served from cache (" + sp + "%) · "
+      + num(upstream) + " upstream calls (" + (100 - sp) + "%)</p>";
+
+    // Provider health summary.
+    var conns = j.connections || [];
+    var byProv = {};
+    conns.forEach(function (c) {
+      (byProv[c.provider] = byProv[c.provider] || []).push(c);
+    });
+    var names = Object.keys(byProv).sort();
+    document.getElementById("ph_hint").textContent = conns.length ? conns.length + " connections" : "";
+    document.getElementById("phealth").innerHTML = names.length ? names.map(function (p) {
+      var list = byProv[p];
+      var healthy = list.filter(function (c) { return c.state === "active"; }).length;
+      var bad = list.some(function (c) { return c.state === "auth_error"; });
+      var tone = bad ? "bad" : (healthy === list.length && list.length ? "ok" : "warn");
+      var label = bad ? "Error" : (healthy + " / " + list.length + " healthy");
+      return '<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border);">'
+        + '<span style="font-weight:600;text-transform:capitalize;">' + esc(p) + "</span>"
+        + '<span class="note">' + list.length + " connections</span>"
+        + '<span class="spacer" style="flex:1;"></span>'
+        + '<span class="badge ' + tone + '">' + esc(label) + "</span>"
+        + '<a class="mini-btn" href="/admin/providers#/' + esc(p) + '">Manage</a></div>';
+    }).join("") : '<div class="empty">No upstream connections configured.</div>';
+
+    // Recent traffic table (compact: latest 7 days; chart above covers 14).
+    var recent = days.slice().reverse().slice(0, 7);
+    document.getElementById("recent").innerHTML = recent.map(function (d) {
+      var er = d.total ? (Math.round(d.errors * 1000 / d.total) / 10) + "%" : "—";
+      return "<tr><td>" + esc(d.day) + "</td><td>" + num(d.total) + "</td><td>" + num(d.ok) + "</td><td>"
+        + num(d.errors) + "</td><td>" + esc(er) + "</td></tr>";
+    }).join("") || '<tr><td colspan="5"><div class="empty">No traffic recorded yet.</div></td></tr>';
+
+    // Top keys (compact).
+    var top = (j.top_keys || []).slice(0, 8);
+    document.getElementById("keys").innerHTML = top.length ? top.map(function (k) {
+      return "<tr><td>" + esc(k.name) + '</td><td class="mono">' + esc(k.key_prefix) + "</td><td>" + num(k.requests) + "</td></tr>";
+    }).join("") : '<tr><td colspan="3"><div class="empty">No customer keys yet.</div></td></tr>';
+  } catch (err) { e.textContent = err.message; }
+}
+
+document.getElementById("refresh").addEventListener("click", function (ev) { TN.withBusy(ev.currentTarget, load); });
+load();
+})();
+</script>
+</body>
+</html>

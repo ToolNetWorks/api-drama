@@ -1,0 +1,48 @@
+from fastapi import FastAPI, HTTPException
+from app.providers.reelshort import scan_reelshort
+
+app = FastAPI(
+    title="ToolNet Drama API",
+    version="1.0.0",
+    description="Multi-platform short drama API"
+)
+
+@app.get("/health")
+async def health():
+    return {
+        "ok": True,
+        "service": "api-drama",
+        "version": "1.0.0"
+    }
+
+@app.post("/api/reelshort/scan")
+async def scan():
+    try:
+        movies = await scan_reelshort()
+        return {
+            "provider": "reelshort",
+            "total": len(movies),
+            "movies": movies
+        }
+    except Exception as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"ReelShort scan failed: {exc}"
+        )
+
+@app.get("/api/providers")
+async def providers():
+    return {
+        "providers": [
+            {"name": "reelshort", "status": "experimental"},
+            {"name": "netshort", "status": "planned"},
+            {"name": "dramabox", "status": "planned"},
+            {"name": "kalostv", "status": "planned"},
+            {"name": "goodshort", "status": "planned"},
+            {"name": "shortmax", "status": "planned"},
+            {"name": "snackshort", "status": "planned"},
+            {"name": "starshort", "status": "planned"},
+            {"name": "honeyreels", "status": "planned"},
+            {"name": "stardusttv", "status": "planned"}
+        ]
+    }

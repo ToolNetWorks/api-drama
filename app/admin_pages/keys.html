@@ -1,0 +1,907 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ToolNet Drama — API Keys</title>
+<link rel="stylesheet" href="/static/admin/admin.css">
+<style>
+/* ApiKeysPage — page-scoped visual system (Vercel/Linear-like, minimal). */
+body { background: #0B0D10; }
+.keys-page { max-width: 1320px; margin: 0 auto; padding: 28px 28px 64px; line-height: 1.6; }
+.keys-head { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 6px; }
+.keys-head h1 { font-size: 26px; font-weight: 600; margin: 0; color: #F5F7FA; letter-spacing: -0.01em; }
+.keys-head p { margin: 4px 0 0; color: #A0A7B2; font-size: 13.5px; }
+.keys-head .spacer { flex: 1; }
+.keys-stats { color: #6F7782; font-size: 13px; margin: 10px 0 18px; }
+.keys-stats b { color: #A0A7B2; font-weight: 600; }
+
+/* Toolbar */
+.keys-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 16px; }
+.keys-search { flex: 1 1 220px; max-width: 340px; position: relative; }
+.keys-search input {
+  width: 100%; background: #111419; border: 1px solid rgba(255,255,255,0.07);
+  color: #F5F7FA; border-radius: 8px; padding: 9px 12px; font-size: 13.5px;
+}
+.keys-search input::placeholder { color: #6F7782; }
+.keys-search input:focus { outline: none; border-color: rgba(255,255,255,0.2); }
+.keys-filter {
+  width: auto; flex: 0 0 auto;
+  background: #111419; border: 1px solid rgba(255,255,255,0.07); color: #A0A7B2;
+  border-radius: 8px; padding: 9px 10px; font-size: 13px;
+}
+.keys-filter:focus { outline: none; border-color: rgba(255,255,255,0.2); }
+.keys-count { margin-left: auto; color: #6F7782; font-size: 13px; white-space: nowrap; }
+
+/* Buttons (page-scoped, neutral) */
+.keys-btn {
+  appearance: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  background: #F5F7FA; color: #0B0D10; border: 1px solid #F5F7FA;
+  border-radius: 8px; padding: 9px 16px; font-size: 13.5px; font-weight: 600;
+  cursor: pointer; white-space: nowrap;
+}
+.keys-btn:hover { background: #fff; }
+.keys-btn:disabled { opacity: .55; cursor: default; }
+.keys-btn.secondary { background: transparent; color: #F5F7FA; border-color: rgba(255,255,255,0.14); font-weight: 500; }
+.keys-btn.secondary:hover { background: rgba(255,255,255,0.05); }
+.keys-btn.danger { background: rgba(248,113,113,0.12); color: #f87171; border-color: rgba(248,113,113,0.35); }
+.keys-btn.danger:hover { background: rgba(248,113,113,0.2); }
+.keys-btn .spin {
+  width: 14px; height: 14px; border: 2px solid rgba(0,0,0,.3);
+  border-top-color: #0B0D10; border-radius: 50%; animation: keys-spin .7s linear infinite;
+}
+.keys-btn.secondary .spin, .keys-btn.danger .spin { border-color: rgba(255,255,255,.25); border-top-color: #F5F7FA; }
+@keyframes keys-spin { to { transform: rotate(360deg); } }
+
+/* Table */
+.keys-table { border-top: 1px solid rgba(255,255,255,0.07); }
+.keys-thead, .krow {
+  display: grid;
+  grid-template-columns: minmax(200px,1.5fr) 92px 128px 92px 168px 168px 118px 108px 40px;
+  gap: 12px; align-items: center;
+}
+.keys-thead {
+  padding: 10px 12px; color: #6F7782; font-size: 11.5px; font-weight: 600;
+  text-transform: uppercase; letter-spacing: .05em;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.krow {
+  padding: 12px; min-height: 68px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  border-radius: 0; cursor: pointer;
+}
+.krow:hover { background: rgba(255,255,255,0.025); }
+.krow .kname { font-size: 14px; font-weight: 500; color: #F5F7FA; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.krow .kprefix { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: #6F7782; margin-top: 2px; }
+.krow .kmeta { font-size: 13px; color: #A0A7B2; }
+.krow .kmeta.dim { color: #6F7782; font-size: 12.5px; }
+.kbar { height: 2px; background: rgba(255,255,255,0.09); border-radius: 2px; overflow: hidden; margin-top: 6px; max-width: 130px; }
+.kbar > i { display: block; height: 100%; background: #A0A7B2; border-radius: 2px; }
+
+/* Status badge */
+.kstatus { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 500; white-space: nowrap; }
+.kstatus::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+.kstatus.active { color: #4ade80; }
+.kstatus.disabled { color: #fbbf24; }
+.kstatus.revoked { color: #f87171; }
+.kstatus.expired { color: #6F7782; }
+
+/* Row menu trigger */
+.kmenu-btn {
+  appearance: none; background: transparent; border: 1px solid transparent; color: #6F7782;
+  border-radius: 8px; width: 32px; height: 32px; font-size: 16px; line-height: 1;
+  cursor: pointer; letter-spacing: 1px;
+}
+.kmenu-btn:hover { color: #F5F7FA; background: rgba(255,255,255,0.06); }
+
+/* Dropdown menu */
+.keys-menu {
+  position: fixed; z-index: 80; min-width: 190px;
+  background: #15191F; border: 1px solid rgba(255,255,255,0.09); border-radius: 10px;
+  padding: 6px; box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+}
+.keys-menu button {
+  display: block; width: 100%; text-align: left; background: none; border: 0;
+  color: #A0A7B2; font-size: 13.5px; padding: 9px 12px; border-radius: 6px; cursor: pointer;
+}
+.keys-menu button:hover { background: rgba(255,255,255,0.06); color: #F5F7FA; }
+.keys-menu button.danger { color: #f87171; }
+.keys-menu button.danger:hover { background: rgba(248,113,113,0.12); }
+.keys-menu hr { border: 0; border-top: 1px solid rgba(255,255,255,0.07); margin: 5px 4px; }
+
+/* Dialog */
+.keys-scrim {
+  position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,0.62);
+  display: none; align-items: flex-start; justify-content: center; padding: 9vh 16px 16px;
+}
+.keys-scrim.open { display: flex; }
+.keys-dialog { width: 100%; max-width: 560px; background: #111419; border: 1px solid rgba(255,255,255,0.09); border-radius: 12px; padding: 22px; }
+.keys-dialog h3 { margin: 0; font-size: 17px; font-weight: 600; color: #F5F7FA; }
+.keys-dialog .sub { color: #6F7782; font-size: 13px; margin: 4px 0 18px; }
+.keys-form { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.keys-form .full { grid-column: 1 / -1; }
+.keys-field { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.keys-field > label { font-size: 12.5px; color: #A0A7B2; font-weight: 500; }
+.keys-field .hint { font-size: 12px; color: #6F7782; }
+.keys-field input {
+  width: 100%; background: #0B0D10; border: 1px solid rgba(255,255,255,0.1);
+  color: #F5F7FA; border-radius: 8px; padding: 9px 12px; font-size: 13.5px;
+}
+.keys-field input::placeholder { color: #4b5158; }
+.keys-field input:focus { outline: none; border-color: rgba(255,255,255,0.28); }
+.keys-field .invalid-msg { font-size: 12px; color: #f87171; display: none; }
+.keys-field.invalid input { border-color: rgba(248,113,113,0.6); }
+.keys-field.invalid .invalid-msg { display: block; }
+.keys-providers { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.keys-providers label {
+  display: flex; align-items: center; gap: 9px; font-size: 13.5px; color: #A0A7B2;
+  border: 1px solid rgba(255,255,255,0.07); border-radius: 8px; padding: 9px 12px; cursor: pointer;
+}
+.keys-providers label:has(input:checked) { color: #F5F7FA; border-color: rgba(255,255,255,0.22); }
+.keys-providers input { width: 15px; height: 15px; accent-color: #F5F7FA; margin: 0; }
+.keys-dialog-acts { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+.keys-dialog-err { color: #f87171; font-size: 13px; margin-top: 12px; min-height: 18px; }
+
+/* Details drawer */
+.keys-drawer-scrim { position: fixed; inset: 0; z-index: 70; background: rgba(0,0,0,0.5); display: none; }
+.keys-drawer-scrim.open { display: block; }
+.keys-drawer {
+  position: fixed; top: 0; right: 0; bottom: 0; z-index: 71; width: min(380px, 100vw);
+  background: #111419; border-left: 1px solid rgba(255,255,255,0.09);
+  transform: translateX(100%); transition: transform .2s ease;
+  display: flex; flex-direction: column; overflow-y: auto;
+}
+.keys-drawer.open { transform: none; }
+.keys-drawer-head { padding: 20px 20px 14px; border-bottom: 1px solid rgba(255,255,255,0.07); }
+.keys-drawer-head h3 { margin: 0 0 6px; font-size: 17px; font-weight: 600; color: #F5F7FA; word-break: break-all; }
+.keys-drawer-close { position: absolute; top: 14px; right: 14px; }
+.keys-drawer-body { padding: 6px 20px 20px; }
+.keys-dl { display: grid; grid-template-columns: 110px 1fr; gap: 10px 14px; font-size: 13.5px; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,0.05); }
+.keys-dl dt { color: #6F7782; font-size: 12.5px; }
+.keys-dl dd { margin: 0; color: #F5F7FA; word-break: break-word; }
+.keys-dl dd.mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12.5px; }
+.keys-drawer-acts { display: grid; gap: 8px; padding: 16px 0 8px; }
+.keys-drawer-acts .keys-btn { width: 100%; }
+
+/* Reveal new key */
+.keys-reveal {
+  border: 1px solid rgba(74,222,128,0.3); background: rgba(74,222,128,0.05);
+  border-radius: 10px; padding: 16px 18px; margin-bottom: 16px; font-size: 13.5px; color: #F5F7FA;
+}
+.keys-reveal code {
+  display: block; margin: 10px 0; padding: 12px; background: #0B0D10;
+  border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px; word-break: break-all; user-select: all; color: #F5F7FA;
+}
+
+/* Skeleton + empty */
+.keys-skel { border-bottom: 1px solid rgba(255,255,255,0.07); padding: 14px 12px; display: grid; gap: 8px; }
+.keys-skel i { display: block; height: 12px; border-radius: 6px; background: rgba(255,255,255,0.05); overflow: hidden; position: relative; }
+.keys-skel i::after { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, transparent, rgba(255,255,255,.06), transparent); animation: keys-sheen 1.2s infinite; }
+@keyframes keys-sheen { from { transform: translateX(-100%); } to { transform: translateX(100%); } }
+.keys-empty { text-align: center; padding: 56px 16px; color: #6F7782; font-size: 14px; }
+.keys-empty h3 { color: #F5F7FA; font-size: 17px; font-weight: 600; margin: 0 0 6px; }
+.keys-empty p { margin: 0 0 18px; font-size: 13.5px; }
+.keys-err { color: #f87171; font-size: 13px; min-height: 19px; margin-bottom: 8px; }
+
+/* Mobile cards */
+.keys-cards { display: none; }
+.kcard {
+  border: 1px solid rgba(255,255,255,0.07); border-radius: 10px;
+  padding: 16px; margin-bottom: 12px; background: transparent; cursor: pointer;
+}
+.kcard:hover { background: rgba(255,255,255,0.02); }
+.kcard-top { display: flex; align-items: flex-start; gap: 10px; }
+.kcard-top .kname { font-size: 14px; font-weight: 500; color: #F5F7FA; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.kcard-prefix { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; color: #6F7782; margin-top: 2px; }
+.kcard-prov { font-size: 13px; color: #A0A7B2; margin-top: 10px; }
+.kcard-rate { font-size: 12.5px; color: #6F7782; margin-top: 2px; }
+.kcard-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 12px; margin-top: 12px; }
+.kcard-grid .lab { font-size: 11.5px; color: #6F7782; text-transform: uppercase; letter-spacing: .04em; }
+.kcard-grid .val { font-size: 13.5px; color: #F5F7FA; margin-top: 1px; }
+.kcard-foot { display: flex; justify-content: flex-end; margin-top: 6px; }
+
+/* Tablet: reduced columns */
+@media (max-width: 1100px) {
+  .keys-thead, .krow { grid-template-columns: minmax(150px,1.4fr) 78px 104px 74px 150px 100px 36px; gap: 10px; }
+  .col-quota, .col-lastused { display: none; }
+}
+/* Mobile: cards instead of table */
+@media (max-width: 767px) {
+  .keys-page { padding: 20px 16px 56px; }
+  .keys-head h1 { font-size: 24px; }
+  .keys-table, .keys-thead { display: none; }
+  .keys-cards { display: block; }
+  .keys-form { grid-template-columns: 1fr; }
+  .keys-search { max-width: none; flex-basis: 100%; }
+  .keys-count { margin-left: 0; }
+}
+@media (min-width: 768px) { .keys-cards { display: none; } }
+</style>
+</head>
+<body>
+<div class="keys-page">
+  <div class="keys-head">
+    <div>
+      <h1>API Keys</h1>
+      <p>Manage customer access, quotas, providers and expiration.</p>
+    </div>
+    <div class="spacer" style="flex:1"></div>
+    <button class="keys-btn" id="create_open">+ Create key</button>
+  </div>
+  <div class="keys-stats" id="stats"></div>
+
+  <div id="reveal_slot"></div>
+
+  <div class="keys-toolbar">
+    <div class="keys-search"><input id="q" type="search" placeholder="Search customer or prefix..." aria-label="Search keys"></div>
+    <select class="keys-filter" id="f_status" aria-label="Filter by status">
+      <option value="">Status: All</option>
+      <option value="active">Active</option>
+      <option value="disabled">Disabled</option>
+      <option value="revoked">Revoked</option>
+      <option value="expired">Expired</option>
+    </select>
+    <select class="keys-filter" id="f_prov" aria-label="Filter by provider">
+      <option value="">Provider: All</option>
+      <option value="reelshort">ReelShort</option>
+      <option value="dramabox">DramaBox</option>
+      <option value="netshort">NetShort</option>
+      <option value="shortmax">ShortMax</option>
+    </select>
+    <span class="keys-count" id="count"></span>
+  </div>
+
+  <div class="keys-err" id="l_err"></div>
+  <div class="keys-table">
+    <div class="keys-thead">
+      <span>Name</span><span>Status</span><span>Providers</span><span>Rate</span>
+      <span>Usage</span><span class="col-quota">Quota</span><span>Expires</span>
+      <span class="col-lastused">Last used</span><span></span>
+    </div>
+    <div id="rows"></div>
+  </div>
+  <div class="keys-cards" id="cards"></div>
+</div>
+
+<script src="/static/admin/admin.js"></script>
+<script>
+(function () {
+"use strict";
+var esc = TN.esc, num = TN.num;
+TN.mountShell('keys');
+
+var PROVIDERS = [
+  ["reelshort", "ReelShort"], ["dramabox", "DramaBox"],
+  ["netshort", "NetShort"], ["shortmax", "ShortMax"]
+];
+var PROV_LABEL = { reelshort: "ReelShort", dramabox: "DramaBox", netshort: "NetShort", shortmax: "ShortMax" };
+var allKeys = [];
+
+function statusOf(k) {
+  if (k.revoked) return "revoked";
+  if (k.expires_at) {
+    var t = Date.parse(k.expires_at);
+    if (!isNaN(t) && t < Date.now()) return "expired";
+  }
+  return k.is_active ? "active" : "disabled";
+}
+function badge(st) {
+  return '<span class="kstatus ' + st + '">' + st[0].toUpperCase() + st.slice(1) + "</span>";
+}
+function provCompact(k) {
+  var p = k.allowed_providers;
+  if (!p || !p.length) return "All";
+  var first = PROV_LABEL[p[0]] || p[0];
+  return p.length > 1 ? esc(first) + ' <span style="color:#6F7782">+' + (p.length - 1) + "</span>" : esc(first);
+}
+function relTime(iso) {
+  if (!iso) return "Never";
+  var t = Date.parse(iso);
+  if (isNaN(t)) return iso;
+  var s = Math.max(0, Math.floor((Date.now() - t) / 1000));
+  if (s < 60) return "just now";
+  var m = Math.floor(s / 60);
+  if (m < 60) return m + "m ago";
+  var h = Math.floor(m / 60);
+  if (h < 24) return h + "h ago";
+  var d = Math.floor(h / 24);
+  if (d < 30) return d + "d ago";
+  return new Date(t).toISOString().slice(0, 10);
+}
+function expText(k) {
+  if (!k.expires_at) return "Never";
+  var t = Date.parse(k.expires_at);
+  if (isNaN(t)) return k.expires_at;
+  return new Date(t).toISOString().slice(0, 10);
+}
+function usageCell(k) {
+  var today = k.usage_today || 0, month = k.usage_month || 0;
+  var bar = "";
+  if (k.daily_quota) {
+    var pct = Math.min(100, Math.round(today * 100 / k.daily_quota));
+    bar = '<div class="kbar" title="' + today + " of " + k.daily_quota + ' daily quota"><i style="width:' + pct + '%"></i></div>';
+  } else if (k.monthly_quota) {
+    var pct2 = Math.min(100, Math.round(month * 100 / k.monthly_quota));
+    bar = '<div class="kbar" title="' + month + " of " + k.monthly_quota + ' monthly quota"><i style="width:' + pct2 + '%"></i></div>';
+  }
+  var todayTxt = k.daily_quota ? today + " / " + num(k.daily_quota) + " today" : today + " today";
+  var monthTxt = k.monthly_quota ? month + " / " + num(k.monthly_quota) + " this month" : month + " this month";
+  return '<div title="Total: ' + num(k.usage_total) + '">' + esc(todayTxt) + "<br>" + esc(monthTxt) + "</div>" + bar;
+}
+function quotaCell(k) {
+  var d = k.daily_quota == null ? "—" : num(k.daily_quota) + "/day";
+  var m = k.monthly_quota == null ? "—" : num(k.monthly_quota) + "/month";
+  return esc(d) + "<br>" + esc(m);
+}
+
+/* ---------- render ---------- */
+function filtered() {
+  var q = document.getElementById("q").value.trim().toLowerCase();
+  var fs = document.getElementById("f_status").value;
+  var fp = document.getElementById("f_prov").value;
+  return allKeys.filter(function (k) {
+    if (fs && statusOf(k) !== fs) return false;
+    if (fp) {
+      var p = k.allowed_providers;
+      if (p && p.length && p.indexOf(fp) === -1) return false;
+      /* null/empty = legacy "all providers" key: matches every provider filter */
+    }
+    if (q && (k.name || "").toLowerCase().indexOf(q) === -1 &&
+        (k.key_prefix || "").toLowerCase().indexOf(q) === -1) return false;
+    return true;
+  });
+}
+
+function rowHTML(k) {
+  var st = statusOf(k);
+  return '<div class="krow" data-id="' + k.id + '" data-st="' + st + '">'
+    + '<div><div class="kname">' + esc(k.name) + '</div><div class="kprefix">' + esc(k.key_prefix) + "</div></div>"
+    + "<div>" + badge(st) + "</div>"
+    + '<div class="kmeta">' + provCompact(k) + "</div>"
+    + '<div class="kmeta">' + esc(k.rpm) + "/min</div>"
+    + '<div class="kmeta">' + usageCell(k) + "</div>"
+    + '<div class="kmeta dim col-quota">' + quotaCell(k) + "</div>"
+    + '<div class="kmeta dim" title="' + esc(k.expires_at || "") + '">' + esc(expText(k)) + "</div>"
+    + '<div class="kmeta dim col-lastused" title="' + esc(k.last_used_at || "") + '">' + esc(relTime(k.last_used_at)) + "</div>"
+    + '<div><button class="kmenu-btn" data-menu="' + k.id + '" aria-label="Key actions" aria-haspopup="menu">&#8226;&#8226;&#8226;</button></div>'
+    + "</div>";
+}
+
+function cardHTML(k) {
+  var st = statusOf(k);
+  return '<div class="kcard" data-id="' + k.id + '">'
+    + '<div class="kcard-top"><div class="kname">' + esc(k.name)
+    + '<div class="kcard-prefix">' + esc(k.key_prefix) + "</div></div>"
+    + "<div>" + badge(st) + "</div></div>"
+    + '<div class="kcard-prov">' + provCompact(k) + '</div>'
+    + '<div class="kcard-rate">' + esc(k.rpm) + " req/min</div>"
+    + '<div class="kcard-grid">'
+    + "<div><div class='lab'>Today</div><div class='val'>" + esc(k.daily_quota ? (k.usage_today || 0) + " / " + num(k.daily_quota) : (k.usage_today || 0)) + "</div></div>"
+    + "<div><div class='lab'>Month</div><div class='val'>" + esc(k.monthly_quota ? (k.usage_month || 0) + " / " + num(k.monthly_quota) : (k.usage_month || 0)) + "</div></div>"
+    + "<div><div class='lab'>Expires</div><div class='val'>" + esc(expText(k)) + "</div></div>"
+    + "<div><div class='lab'>Last used</div><div class='val'>" + esc(relTime(k.last_used_at)) + "</div></div>"
+    + "</div>"
+    + '<div class="kcard-foot"><button class="kmenu-btn" data-menu="' + k.id + '" aria-label="Key actions">&#8226;&#8226;&#8226;</button></div>'
+    + "</div>";
+}
+
+function render() {
+  var list = filtered();
+  document.getElementById("count").textContent = list.length + (list.length === 1 ? " key" : " keys");
+  var nRev = allKeys.filter(function (k) { return k.revoked; }).length;
+  var nAct = allKeys.filter(function (k) { return statusOf(k) === "active"; }).length;
+  document.getElementById("stats").innerHTML =
+    "<b>" + num(allKeys.length) + "</b> total &nbsp;·&nbsp; <b>" + num(nAct) + "</b> active &nbsp;·&nbsp; <b>" + num(nRev) + "</b> revoked";
+  var rows = document.getElementById("rows");
+  var cards = document.getElementById("cards");
+  if (!list.length) {
+    var empty = allKeys.length
+      ? '<div class="keys-empty"><h3>No matching keys</h3><p>Try a different search or filter.</p></div>'
+      : '<div class="keys-empty"><h3>No API keys yet</h3><p>Create your first customer key.</p><button class="keys-btn" id="empty_create">Create key</button></div>';
+    rows.innerHTML = empty;
+    cards.innerHTML = empty;
+    var ec = document.getElementById("empty_create");
+    if (ec) ec.addEventListener("click", openCreate);
+  } else {
+    rows.innerHTML = list.map(rowHTML).join("");
+    cards.innerHTML = list.map(cardHTML).join("");
+  }
+  rows.querySelectorAll(".krow").forEach(bindRow);
+  cards.querySelectorAll(".kcard").forEach(bindRow);
+  rows.querySelectorAll("[data-menu]").forEach(bindMenuBtn);
+  cards.querySelectorAll("[data-menu]").forEach(bindMenuBtn);
+}
+
+function bindRow(el) {
+  el.addEventListener("click", function (ev) {
+    if (ev.target.closest("[data-menu]")) return;
+    openDrawer(Number(el.dataset.id));
+  });
+}
+
+function skeleton() {
+  var s = "";
+  for (var i = 0; i < 5; i++) s += '<div class="keys-skel"><i style="width:32%"></i><i style="width:58%"></i></div>';
+  document.getElementById("rows").innerHTML = s;
+  document.getElementById("cards").innerHTML = s;
+}
+
+async function load() {
+  var le = document.getElementById("l_err");
+  le.textContent = "";
+  skeleton();
+  try {
+    await TN.ensureCsrf();
+    var j = await TN.api("/admin/api/keys");
+    allKeys = j.keys || [];
+    render();
+  } catch (err) {
+    document.getElementById("rows").innerHTML = "";
+    document.getElementById("cards").innerHTML = "";
+    le.textContent = err.message;
+  }
+}
+
+/* ---------- actions menu ---------- */
+var openMenuEl = null;
+function closeMenu() {
+  if (openMenuEl) { openMenuEl.remove(); openMenuEl = null; }
+  document.removeEventListener("click", outsideMenu, true);
+}
+function outsideMenu(ev) {
+  if (openMenuEl && !openMenuEl.contains(ev.target)) closeMenu();
+}
+function bindMenuBtn(btn) {
+  btn.addEventListener("click", function (ev) {
+    ev.stopPropagation();
+    var id = Number(btn.dataset.menu);
+    if (openMenuEl && openMenuEl.dataset.id === String(id)) { closeMenu(); return; }
+    closeMenu();
+    var k = allKeys.find(function (x) { return x.id === id; });
+    if (!k) return;
+    var st = statusOf(k);
+    var m = document.createElement("div");
+    m.className = "keys-menu";
+    m.dataset.id = String(id);
+    m.setAttribute("role", "menu");
+    function item(label, fn, danger) {
+      var b = document.createElement("button");
+      b.textContent = label;
+      if (danger) b.className = "danger";
+      b.addEventListener("click", function (e) { e.stopPropagation(); closeMenu(); fn(); });
+      m.appendChild(b);
+    }
+    item("Edit providers", function () { openProviders(id); });
+    item("Set expiry", function () { openExpiry(id); });
+    if (k.is_active) item("Disable", function () { mutate(id, "disable"); });
+    else item("Enable", function () { mutate(id, "enable"); });
+    if (!k.revoked) {
+      var hr = document.createElement("hr");
+      m.appendChild(hr);
+      item("Revoke key", function () { openRevoke(id); }, true);
+    }
+    document.body.appendChild(m);
+    var r = btn.getBoundingClientRect();
+    m.style.top = Math.min(window.innerHeight - m.offsetHeight - 10, r.bottom + window.scrollY + 6) + "px";
+    m.style.left = Math.max(10, r.right + window.scrollX - m.offsetWidth) + "px";
+    openMenuEl = m;
+    document.addEventListener("click", outsideMenu, true);
+  });
+}
+document.addEventListener("keydown", function (ev) { if (ev.key === "Escape") { closeMenu(); closeDialog(); closeDrawer(); } });
+
+async function mutate(id, action, body, method) {
+  var le = document.getElementById("l_err");
+  le.textContent = "";
+  try {
+    if (action === "enable" || action === "disable") {
+      await TN.api("/admin/api/keys/" + id + "/" + action, { method: "POST" });
+      TN.toast(action === "enable" ? "Key enabled" : "Key disabled", action === "enable" ? "ok" : "warn");
+    } else if (action === "revoke") {
+      await TN.api("/admin/api/keys/" + id + "/revoke", { method: "POST" });
+      TN.toast("Key revoked", "warn");
+    } else if (action === "patch") {
+      await TN.api("/admin/api/keys/" + id, { method: "PATCH", body: JSON.stringify(body) });
+      TN.toast("Key updated", "ok");
+    }
+    await load();
+    refreshDrawer(id);
+  } catch (err) { le.textContent = err.message; TN.toast(err.message, "bad"); }
+}
+
+/* ---------- dialog shell ---------- */
+function closeDialog() {
+  var s = document.getElementById("keys_dialog");
+  if (s) s.remove();
+}
+function openDialog(title, sub, bodyEl, primaryLabel, primaryKind, onPrimary) {
+  closeDialog();
+  var scrim = document.createElement("div");
+  scrim.className = "keys-scrim";
+  scrim.id = "keys_dialog";
+  var box = document.createElement("div");
+  box.className = "keys-dialog";
+  box.setAttribute("role", "dialog");
+  box.setAttribute("aria-label", title);
+  var h = document.createElement("h3");
+  h.textContent = title;
+  box.appendChild(h);
+  if (sub) {
+    var p = document.createElement("p");
+    p.className = "sub";
+    p.textContent = sub;
+    box.appendChild(p);
+  }
+  box.appendChild(bodyEl);
+  var err = document.createElement("div");
+  err.className = "keys-dialog-err";
+  box.appendChild(err);
+  var acts = document.createElement("div");
+  acts.className = "keys-dialog-acts";
+  var cancel = document.createElement("button");
+  cancel.type = "button";
+  cancel.className = "keys-btn secondary";
+  cancel.textContent = "Cancel";
+  cancel.addEventListener("click", closeDialog);
+  var primary = document.createElement("button");
+  primary.type = "button";
+  primary.className = "keys-btn" + (primaryKind === "danger" ? " danger" : "");
+  primary.textContent = primaryLabel;
+  primary.addEventListener("click", function () { onPrimary(primary, err); });
+  acts.appendChild(cancel);
+  acts.appendChild(primary);
+  box.appendChild(acts);
+  scrim.appendChild(box);
+  scrim.addEventListener("click", function (ev) { if (ev.target === scrim) closeDialog(); });
+  document.body.appendChild(scrim);
+  requestAnimationFrame(function () { scrim.classList.add("open"); });
+  var first = bodyEl.querySelector("input");
+  if (first) first.focus();
+  return { close: closeDialog, err: err };
+}
+function mkField(labelText, inputEl, hint) {
+  var w = document.createElement("div");
+  w.className = "keys-field";
+  var lab = document.createElement("label");
+  lab.textContent = labelText;
+  w.appendChild(lab);
+  w.appendChild(inputEl);
+  if (hint) {
+    var h = document.createElement("span");
+    h.className = "hint";
+    h.textContent = hint;
+    w.appendChild(h);
+  }
+  var msg = document.createElement("span");
+  msg.className = "invalid-msg";
+  w.appendChild(msg);
+  return w;
+}
+function setInvalid(inputEl, message) {
+  var w = inputEl.closest(".keys-field");
+  if (!w) return;
+  w.classList.toggle("invalid", !!message);
+  w.querySelector(".invalid-msg").textContent = message || "";
+}
+function mkInput(type, placeholder, value) {
+  var i = document.createElement("input");
+  i.type = type || "text";
+  if (placeholder) i.placeholder = placeholder;
+  if (value != null) i.value = value;
+  return i;
+}
+
+/* ---------- CreateKeyDialog ---------- */
+function openCreate() {
+  var form = document.createElement("div");
+  form.className = "keys-form";
+  var nameI = mkInput("text", "customer-acme");
+  var rpmI = mkInput("number"); rpmI.min = "1"; rpmI.value = "60";
+  var dqI = mkInput("number"); dqI.min = "1";
+  var mqI = mkInput("number"); mqI.min = "1";
+  var expI = mkInput("text", "2027-01-01T00:00:00+00:00");
+  form.appendChild(mkField("Customer name", nameI));
+  form.appendChild(mkField("Rate limit (req/min)", rpmI));
+  form.appendChild(mkField("Daily quota", dqI, "Blank = none"));
+  form.appendChild(mkField("Monthly quota", mqI, "Blank = none"));
+  var expW = mkField("Expires at", expI, "ISO-8601, blank = never");
+  expW.classList.add("full");
+  form.appendChild(expW);
+  var provW = document.createElement("div");
+  provW.className = "keys-field full";
+  var plab = document.createElement("label");
+  plab.textContent = "Providers";
+  provW.appendChild(plab);
+  var grid = document.createElement("div");
+  grid.className = "keys-providers";
+  PROVIDERS.forEach(function (p) {
+    var lab = document.createElement("label");
+    var cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = p[0];
+    if (p[0] === "reelshort") cb.checked = true;
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(p[1]));
+    grid.appendChild(lab);
+  });
+  provW.appendChild(grid);
+  var pmsg = document.createElement("span");
+  pmsg.className = "invalid-msg";
+  provW.appendChild(pmsg);
+  form.appendChild(provW);
+
+  openDialog("Create key", "Full key material is shown exactly once.", form, "Create key", "", function (btn, errBox) {
+    var ok = true;
+    var name = nameI.value.trim();
+    if (!name) { setInvalid(nameI, "Customer name is required."); ok = false; } else setInvalid(nameI, "");
+    var rpm = parseInt(rpmI.value || "60", 10);
+    if (!(rpm >= 1 && rpm <= 10000)) { setInvalid(rpmI, "Rate must be 1–10000."); ok = false; } else setInvalid(rpmI, "");
+    function optInt(inputEl, max, label) {
+      var v = inputEl.value.trim();
+      if (v === "") { setInvalid(inputEl, ""); return null; }
+      var n = parseInt(v, 10);
+      if (!(n >= 1 && n <= max)) { setInvalid(inputEl, label + " must be a positive integer."); return undefined; }
+      setInvalid(inputEl, "");
+      return n;
+    }
+    var dq = optInt(dqI, 10000000, "Daily quota");
+    var mq = optInt(mqI, 100000000, "Monthly quota");
+    if (dq === undefined || mq === undefined) ok = false;
+    var prov = Array.prototype.map.call(grid.querySelectorAll("input:checked"), function (c) { return c.value; });
+    if (!prov.length) { provW.classList.add("invalid"); pmsg.textContent = "Select at least one provider."; ok = false; }
+    else { provW.classList.remove("invalid"); pmsg.textContent = ""; }
+    if (!ok) return;
+    errBox.textContent = "";
+    TN.withBusy(btn, async function () {
+      try {
+        var j = await TN.api("/admin/api/keys", { method: "POST", body: JSON.stringify({
+          name: name, rpm: rpm, daily_quota: dq, monthly_quota: mq,
+          expires_at: expI.value.trim() || null, allowed_providers: prov
+        }) });
+        closeDialog();
+        showReveal(j.api_key);
+        TN.toast("Key created", "ok");
+        await load();
+      } catch (err) { errBox.textContent = err.message; }
+    });
+  });
+}
+
+function showReveal(apiKey) {
+  var slot = document.getElementById("reveal_slot");
+  slot.innerHTML = "";
+  var box = document.createElement("div");
+  box.className = "keys-reveal";
+  var b = document.createElement("b");
+  b.textContent = "New API key — copy it now, it will never be shown again.";
+  var code = document.createElement("code");
+  code.textContent = apiKey;
+  var row = document.createElement("div");
+  row.style.display = "flex";
+  row.style.gap = "10px";
+  var copy = document.createElement("button");
+  copy.className = "keys-btn secondary";
+  copy.textContent = "Copy";
+  copy.addEventListener("click", async function () {
+    try {
+      await navigator.clipboard.writeText(apiKey);
+      TN.toast("Copied to clipboard", "ok");
+    } catch (e) {
+      var ta = document.createElement("textarea");
+      ta.value = apiKey;
+      document.body.appendChild(ta);
+      ta.select();
+      try { document.execCommand("copy"); TN.toast("Copied to clipboard", "ok"); }
+      catch (e2) { TN.toast("Copy failed — select the key manually", "bad"); }
+      ta.remove();
+    }
+  });
+  var dismiss = document.createElement("button");
+  dismiss.className = "keys-btn secondary";
+  dismiss.textContent = "Dismiss";
+  dismiss.addEventListener("click", function () { slot.innerHTML = ""; });
+  row.appendChild(copy);
+  row.appendChild(dismiss);
+  var note = document.createElement("div");
+  note.style.cssText = "color:#6F7782;font-size:12.5px;margin-top:10px";
+  note.textContent = "Hand this key and the /v1/reelshort endpoints to the customer. Customers have no dashboard account.";
+  box.appendChild(b);
+  box.appendChild(code);
+  box.appendChild(row);
+  box.appendChild(note);
+  slot.appendChild(box);
+  box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+}
+
+/* ---------- edit dialogs ---------- */
+function openExpiry(id) {
+  var k = allKeys.find(function (x) { return x.id === id; });
+  var wrap = document.createElement("div");
+  var input = mkInput("text", "2027-01-01T00:00:00+00:00 (empty = never)", (k && k.expires_at) || "");
+  wrap.appendChild(mkField("New expiry (ISO-8601, empty = never)", input));
+  openDialog("Set expiry", (k && k.name) || "", wrap, "Save", "", function (btn, errBox) {
+    errBox.textContent = "";
+    TN.withBusy(btn, async function () {
+      try {
+        await TN.api("/admin/api/keys/" + id, { method: "PATCH", body: JSON.stringify({ expires_at: input.value.trim() || null }) });
+        closeDialog();
+        TN.toast("Expiry updated", "ok");
+        await load();
+        refreshDrawer(id);
+      } catch (err) { errBox.textContent = err.message; }
+    });
+  });
+}
+
+function openProviders(id) {
+  var k = allKeys.find(function (x) { return x.id === id; });
+  var cur = (k && k.allowed_providers && k.allowed_providers.length) ? k.allowed_providers : PROVIDERS.map(function (p) { return p[0]; });
+  var wrap = document.createElement("div");
+  var grid = document.createElement("div");
+  grid.className = "keys-providers";
+  PROVIDERS.forEach(function (p) {
+    var lab = document.createElement("label");
+    var cb = document.createElement("input");
+    cb.type = "checkbox";
+    cb.value = p[0];
+    if (cur.indexOf(p[0]) !== -1) cb.checked = true;
+    lab.appendChild(cb);
+    lab.appendChild(document.createTextNode(p[1]));
+    grid.appendChild(lab);
+  });
+  wrap.appendChild(grid);
+  openDialog("Edit providers", (k && k.name) || "", wrap, "Save", "", function (btn, errBox) {
+    var prov = Array.prototype.map.call(grid.querySelectorAll("input:checked"), function (c) { return c.value; });
+    if (!prov.length) { errBox.textContent = "Select at least one provider."; return; }
+    errBox.textContent = "";
+    TN.withBusy(btn, async function () {
+      try {
+        await TN.api("/admin/api/keys/" + id, { method: "PATCH", body: JSON.stringify({ allowed_providers: prov }) });
+        closeDialog();
+        TN.toast("Providers updated", "ok");
+        await load();
+        refreshDrawer(id);
+      } catch (err) { errBox.textContent = err.message; }
+    });
+  });
+}
+
+function openRevoke(id) {
+  var k = allKeys.find(function (x) { return x.id === id; });
+  var wrap = document.createElement("div");
+  wrap.style.cssText = "color:#A0A7B2;font-size:13.5px";
+  wrap.textContent = "Existing customers using this key will be cut off immediately. This cannot be undone.";
+  openDialog("Revoke key", (k && k.name) || "", wrap, "Revoke key", "danger", function (btn, errBox) {
+    errBox.textContent = "";
+    TN.withBusy(btn, async function () {
+      try {
+        await TN.api("/admin/api/keys/" + id + "/revoke", { method: "POST" });
+        closeDialog();
+        TN.toast("Key revoked", "warn");
+        await load();
+        refreshDrawer(id);
+      } catch (err) { errBox.textContent = err.message; }
+    });
+  });
+}
+
+/* ---------- KeyDetailsDrawer ---------- */
+function drawerEls() {
+  var scrim = document.getElementById("keys_drawer_scrim");
+  var drawer = document.getElementById("keys_drawer");
+  if (!scrim) {
+    scrim = document.createElement("div");
+    scrim.className = "keys-drawer-scrim";
+    scrim.id = "keys_drawer_scrim";
+    scrim.addEventListener("click", closeDrawer);
+    drawer = document.createElement("aside");
+    drawer.className = "keys-drawer";
+    drawer.id = "keys_drawer";
+    drawer.setAttribute("aria-label", "Key details");
+    document.body.appendChild(scrim);
+    document.body.appendChild(drawer);
+  }
+  return { scrim: scrim, drawer: drawer };
+}
+function closeDrawer() {
+  var scrim = document.getElementById("keys_drawer_scrim");
+  var drawer = document.getElementById("keys_drawer");
+  if (scrim) scrim.classList.remove("open");
+  if (drawer) { drawer.classList.remove("open"); drawer.dataset.id = ""; }
+}
+function drawerActionBtn(label, kind, fn) {
+  var b = document.createElement("button");
+  b.className = "keys-btn" + (kind ? " " + kind : " secondary");
+  if (!kind) b.className = "keys-btn secondary";
+  b.textContent = label;
+  b.addEventListener("click", function () { fn(b); });
+  return b;
+}
+function fillDrawer(id) {
+  var els = drawerEls();
+  var k = allKeys.find(function (x) { return x.id === id; });
+  if (!k) { closeDrawer(); return; }
+  var st = statusOf(k);
+  els.drawer.dataset.id = String(id);
+  els.drawer.innerHTML = "";
+  var head = document.createElement("div");
+  head.className = "keys-drawer-head";
+  var h = document.createElement("h3");
+  h.textContent = k.name;
+  head.appendChild(h);
+  var b = document.createElement("div");
+  b.innerHTML = badge(st);
+  head.appendChild(b);
+  var x = document.createElement("button");
+  x.className = "kmenu-btn keys-drawer-close";
+  x.setAttribute("aria-label", "Close details");
+  x.textContent = "×";
+  x.addEventListener("click", closeDrawer);
+  head.appendChild(x);
+  els.drawer.appendChild(head);
+
+  var body = document.createElement("div");
+  body.className = "keys-drawer-body";
+  function row(dt, dd, mono) {
+    var dl = document.createElement("dl");
+    dl.className = "keys-dl";
+    var t = document.createElement("dt");
+    t.textContent = dt;
+    var d = document.createElement("dd");
+    if (mono) d.className = "mono";
+    d.textContent = dd;
+    dl.appendChild(t);
+    dl.appendChild(d);
+    body.appendChild(dl);
+  }
+  var provs = (!k.allowed_providers || !k.allowed_providers.length) ? "All providers"
+    : k.allowed_providers.map(function (p) { return PROV_LABEL[p] || p; }).join(", ");
+  row("Prefix", k.key_prefix, true);
+  row("Rate limit", k.rpm + " req/min");
+  row("Providers", provs);
+  row("Usage today", String(k.usage_today || 0) + (k.daily_quota ? " / " + num(k.daily_quota) : ""));
+  row("Usage month", String(k.usage_month || 0) + (k.monthly_quota ? " / " + num(k.monthly_quota) : ""));
+  row("Usage total", num(k.usage_total));
+  row("Daily quota", k.daily_quota == null ? "—" : num(k.daily_quota));
+  row("Monthly quota", k.monthly_quota == null ? "—" : num(k.monthly_quota));
+  row("Created", k.created_at ? String(k.created_at).slice(0, 16).replace("T", " ") : "—");
+  row("Expires", k.expires_at ? String(k.expires_at).slice(0, 16).replace("T", " ") : "Never");
+  row("Last used", k.last_used_at ? relTime(k.last_used_at) + " (" + String(k.last_used_at).slice(0, 16).replace("T", " ") + ")" : "Never");
+
+  var acts = document.createElement("div");
+  acts.className = "keys-drawer-acts";
+  acts.appendChild(drawerActionBtn("Edit providers", "", function () { openProviders(id); }));
+  acts.appendChild(drawerActionBtn("Set expiry", "", function () { openExpiry(id); }));
+  if (k.is_active) acts.appendChild(drawerActionBtn("Disable key", "", function (btn) {
+    TN.withBusy(btn, async function () { await mutate(id, "disable"); });
+  }));
+  else acts.appendChild(drawerActionBtn("Enable key", "", function (btn) {
+    TN.withBusy(btn, async function () { await mutate(id, "enable"); });
+  }));
+  if (!k.revoked) acts.appendChild(drawerActionBtn("Revoke key", "danger", function () { openRevoke(id); }));
+  body.appendChild(acts);
+  els.drawer.appendChild(body);
+}
+function openDrawer(id) {
+  fillDrawer(id);
+  var els = drawerEls();
+  els.scrim.classList.add("open");
+  requestAnimationFrame(function () { els.drawer.classList.add("open"); });
+}
+function refreshDrawer(id) {
+  var drawer = document.getElementById("keys_drawer");
+  if (drawer && drawer.classList.contains("open") && drawer.dataset.id === String(id)) fillDrawer(id);
+}
+
+/* ---------- wire up ---------- */
+document.getElementById("q").addEventListener("input", render);
+document.getElementById("f_status").addEventListener("change", render);
+document.getElementById("f_prov").addEventListener("change", render);
+document.getElementById("create_open").addEventListener("click", openCreate);
+load();
+})();
+</script>
+</body>
+</html>

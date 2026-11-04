@@ -1,0 +1,35 @@
+# ToolNet Drama API Gateway — production compose.
+# Loopback-only publish: nginx (host) proxies 127.0.0.1:8090. No public port.
+# Secrets come from host .env at runtime (never baked into the image).
+services:
+  api:
+    build: .
+    image: api-drama:latest
+    container_name: api-drama
+    restart: unless-stopped
+    user: "1000:1000"
+    ports:
+      - "127.0.0.1:8090:8090"
+    env_file:
+      - .env
+    environment:
+      DB_PATH: /srv/data/reelshort.sqlite3
+      LOG_FILE: /srv/logs/api-drama.log
+    volumes:
+      - ./data:/srv/data
+      - ./logs:/srv/logs
+    mem_limit: 768m
+    mem_reservation: 256m
+    cpus: 1.0
+    pids_limit: 128
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health', timeout=5)"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 25s

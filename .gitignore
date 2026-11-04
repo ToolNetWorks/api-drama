@@ -1,0 +1,42 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Environment & Secrets (NEVER COMMIT)
+.env
+.env.local
+.env.*.local
+
+# Database & Runtime data
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+data/
+logs/
+backups/
+
+# IDE/OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Docker
+.docker/
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Type checking
+.mypy_cache/
+.pyre/

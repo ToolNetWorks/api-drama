@@ -1,0 +1,10 @@
+Official provider logos vendored locally (no hotlinking).
+Fetched 2026-10-13, resized to 96x96 PNG (displayed 40px desktop / 36px mobile).
+
+- reelshort.png  <- https://www.reelshort.com/ nav-bar + favicon icon
+                   (https://v-mps.crazymaplestudios.com/images/211d3420-d721-11f0-84ad-6b5693b490dc.png, 204x204)
+- dramabox.png   <- official DramaBox CDN logo
+                   (https://infocdn.dramaboxdb.com/seo/dramabox/images/logo.png, 176x176)
+- netshort.png   <- https://netshort.com/ favicon (WebP 300x300, converted to PNG)
+- shortmax.png   <- https://www.shorttv.live/images/web.png is a wide wordmark (not used);
+                   square app icon https://www.shorttv.live/images/logo.png (71x71) used instead.

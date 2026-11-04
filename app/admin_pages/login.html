@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ToolNet Admin — Sign in</title>
+<link rel="stylesheet" href="/static/admin/admin.css">
+<style>
+  body { display: block; }
+  .auth-card label { display: block; font-size: 13px; color: var(--muted); margin: 14px 0 6px; }
+  .auth-card input { width: 100%; }
+  .auth-card button { width: 100%; margin-top: 20px; padding: 11px; font-size: 14px; }
+  .auth-err { display: none; margin-top: 14px; padding: 10px 12px; border: 1px solid rgba(248,113,113,.45); background: rgba(248,113,113,.08); color: #fca5a5; border-radius: var(--radius-sm); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="auth-wrap">
+  <div class="auth-card">
+    <div class="brand" style="margin-bottom:20px;"><span class="mark">TD</span>ToolNet Drama</div>
+    <h1>Sign in</h1>
+    <p class="sub">Owner access only. There are no customer accounts on this system.</p>
+    <form id="f">
+      <label for="u">Username</label>
+      <input id="u" name="username" autocomplete="username" required>
+      <label for="p">Password</label>
+      <input id="p" type="password" autocomplete="current-password" required>
+      <button class="btn" id="b" type="submit">Sign in</button>
+      <div class="auth-err" id="e"></div>
+    </form>
+  </div>
+</div>
+<script>
+const f = document.getElementById('f'), e = document.getElementById('e'), b = document.getElementById('b');
+f.addEventListener('submit', async ev => {
+  ev.preventDefault(); e.style.display = 'none';
+  const label = b.innerHTML; b.disabled = true; b.innerHTML = '<span class="spin"></span>';
+  try {
+    const r = await fetch('/admin/api/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+      body: JSON.stringify({ username: document.getElementById('u').value, password: document.getElementById('p').value })
+    });
+    const j = await r.json().catch(() => ({}));
+    if (!r.ok || !j.ok) throw new Error(j.error || ('HTTP ' + r.status));
+    try { sessionStorage.setItem('tn_csrf', j.csrf_token || ''); } catch (_) {}
+    location.href = '/admin/overview';
+  } catch (err) {
+    e.textContent = err.message; e.style.display = 'block';
+    b.disabled = false; b.innerHTML = label;
+  }
+});
+</script>
+</body>
+</html>

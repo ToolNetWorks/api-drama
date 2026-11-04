@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ToolNet Drama — Providers</title>
+<link rel="stylesheet" href="/static/admin/admin.css">
+</head>
+<body>
+<div class="container">
+  <!-- ============ DIRECTORY VIEW ============ -->
+  <div id="view-dir">
+    <div class="page-head">
+      <div>
+        <h1>Providers</h1>
+        <p>Upstream drama providers and connection health.</p>
+      </div>
+    </div>
+    <div class="section-label">Drama Providers</div>
+    <div class="err" id="dir_err"></div>
+    <div class="prov-grid" id="prov_grid"></div>
+  </div>
+
+  <!-- ============ DETAIL VIEW ============ -->
+  <div id="view-detail" class="hidden">
+    <a class="back-link" href="#/" id="back_link">&larr; Back to Providers</a>
+    <div class="page-head">
+      <div style="display:flex;align-items:center;gap:12px;">
+        <span class="prov-logo" id="d_mark">RS</span>
+        <div>
+          <h1 id="d_name">ReelShort</h1>
+          <p id="d_sub">—</p>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <span id="d_status"></span>
+    </div>
+    <div class="err" id="d_err"></div>
+
+    <div class="card panel">
+      <div class="panel-head"><h2>Routing</h2><span class="hint">applies to healthy connections with independent quota</span></div>
+      <div class="row">
+        <div class="field"><label>Strategy</label><select id="s_strategy"><option value="round_robin">Round Robin</option><option value="fill_first">Fill First</option></select></div>
+        <div class="field"><label>Rotation</label><select id="s_rot"><option value="1">Enabled</option><option value="0">Disabled</option></select></div>
+        <div class="field"><label>Cooldown (s)</label><input id="s_cd" type="number" min="10" max="3600" value="300"></div>
+        <div><button class="btn" id="s_save">Save</button></div>
+      </div>
+    </div>
+
+    <div class="card panel">
+      <div class="panel-head">
+        <h2>Connections</h2>
+        <span class="spacer"></span>
+        <span class="hint" id="l_hint"></span>
+        <button class="btn ghost sm" id="bulk_test" disabled>Test selected</button>
+        <button class="btn sm" id="open_add">Add Connection</button>
+      </div>
+      <div class="conn-toolbar">
+        <label class="check" style="padding:6px 10px;"><input type="checkbox" id="sel_all">Select all</label>
+        <span class="note" id="sel_info">0 selected</span>
+        <span class="spacer"></span>
+        <span class="note">Auth errors (401/403) never fail over to another key.</span>
+      </div>
+      <div class="err" id="l_err"></div>
+      <div class="conn-list" id="conn_list"></div>
+    </div>
+  </div>
+</div>
+
+<script src="/static/admin/admin.js"></script>
+<script>
+(function () {
+"use strict";
+var esc = TN.esc;
+/* Official logos vendored at /static/admin/providers/<id>.png.
+   Fixed-size box + width/height attrs = no layout shift; initials remain
+   underneath and show only if the image fails (onerror removes the img). */
+function logoHTML(p, eager) {
+  return '<span class="prov-logo">' + esc(p.mark)
+    + '<img src="/static/admin/providers/' + p.id + '.png" width="40" height="40" alt="' + esc(p.name) + ' logo"'
+    + (eager ? "" : ' loading="lazy"')
+    + ' onerror="this.remove()"></span>';
+}
+var PROVIDERS = [
+  { id: "reelshort", name: "ReelShort", mark: "RS" },
+  { id: "dramabox",  name: "DramaBox",  mark: "DB" },
+  { id: "netshort",  name: "NetShort",  mark: "NS" },
+  { id: "shortmax",  name: "ShortMax",  mark: "SM" }
+];
+var cur = null;            // current provider id in detail view
+var conns = [];            // loaded connections for cur
+var selected = new Set();  // selected connection ids
+var dirCache = [];         // directory data
+var dirFilter = "";
+
+TN.mountShell("providers", {
+  search: true,
+  searchPlaceholder: "Search providers",
+  onSearch: function (v) {
+    dirFilter = (v || "").toLowerCase();
+    renderDirectory();
+    var q = document.getElementById("conn_filter");
+    if (q && cur) { q.value = v; renderConns(v); }
+  }
+});
+
+/* ---------------- state helpers ---------------- */
+
+function stateBadge(s) {
+  var map = {
+    active: ["ok", "Active"],
+    disabled: ["plain", "Disabled"],
+    cooldown: ["warn", "Cooldown"],
+    exhausted: ["warn", "Exhausted"],
+    auth_error: ["bad", "Auth error"]
+  };
+  var m = map[s] || ["plain", s || "Unknown"];
+  return '<span class="badge ' + m[0] + '">' + esc(m[1]) + "</span>";
+}
+function barTone(pct) { return pct >= 90 ? "bad" : (pct >= 70 ? "warn" : ""); }
+function overallOf(list) {
+  if (!list.length) return { tone: "plain", text: "No connections" };
+  if (list.some(function (c) { return c.state === "auth_error"; })) return { tone: "bad", text: "Error" };
+  var healthy = list.filter(function (c) { return c.state === "active"; }).length;
+  if (healthy > 0) return { tone: "ok", text: "Connected" };
+  if (list.some(function (c) { return !c.enabled; })) return { tone: "warn", text: "Disabled" };
+  return { tone: "warn", text: "Degraded" };
+}
+
+/* ---------------- routing ---------------- */
+
+function show(view) {
+  document.getElementById("view-dir").classList.toggle("hidden", view !== "dir");
+  document.getElementById("view-detail").classList.toggle("hidden", view !== "detail");
+}
+
+function route() {
+  var h = (location.hash || "#/").replace(/^#\/?/, "");
+  var found = PROVIDERS.some(function (p) { return p.id === h; });
+  if (found) openDetail(h);
+  else openDirectory();
+}
+window.addEventListener("hashchange", route);
+
+/* ---------------- directory ---------------- */
+
+async function openDirectory() {
+  cur = null;
+  show("dir");
+  var e = document.getElementById("dir_err");
+  e.textContent = "";
+  try {
+    await TN.ensureCsrf();
+    var results = await Promise.all(PROVIDERS.map(function (p) {
+      return TN.api("/admin/api/providers/" + p.id + "/connections")
+        .then(function (j) { return { meta: p, conns: j.connections || [] }; })
+        .catch(function (err) { return { meta: p, conns: null, error: TN.shortErr(err) }; });
+    }));
+    dirCache = results;
+    renderDirectory();
+  } catch (err) { e.textContent = err.message; }
+}
+
+function renderDirectory() {
+  var g = document.getElementById("prov_grid");
+  var q = dirFilter.trim();
+  g.innerHTML = dirCache
+    .filter(function (r) {
+      return !q || r.meta.name.toLowerCase().indexOf(q) !== -1 || r.meta.id.indexOf(q) !== -1;
+    })
+    .map(function (r) {
+      var body;
+      if (r.conns === null) {
+        body = '<div class="sub">Failed to load: ' + esc(r.error || "error") + '</div>';
+        return '<button class="prov-card" data-p="' + r.meta.id + '">'
+          + logoHTML(r.meta, false)
+          + '<span class="meta"><span class="name">' + esc(r.meta.name) + "</span>" + body + "</span>"
+          + '<span class="side"><span class="badge bad">Error</span></span></button>';
+      }
+      var o = overallOf(r.conns);
+      var healthy = r.conns.filter(function (c) { return c.state === "active"; }).length;
+      return '<button class="prov-card" data-p="' + r.meta.id + '">'
+        + logoHTML(r.meta, false)
+        + '<span class="meta"><span class="name">' + esc(r.meta.name) + "</span>"
+        + '<span class="sub">' + r.conns.length + " connection" + (r.conns.length === 1 ? "" : "s")
+        + " · " + healthy + " healthy</span></span>"
+        + '<span class="side"><span class="badge ' + o.tone + '">' + esc(o.text) + "</span></span></button>";
+    }).join("") || '<div class="empty">No providers match.</div>';
+  g.querySelectorAll(".prov-card").forEach(function (b) {
+    b.addEventListener("click", function () { location.hash = "#/" + b.dataset.p; });
+  });
+}
+
+/* ---------------- detail ---------------- */
+
+function provMeta(id) {
+  for (var i = 0; i < PROVIDERS.length; i++) if (PROVIDERS[i].id === id) return PROVIDERS[i];
+  return { id: id, name: id, mark: "?" };
+}
+
+async function openDetail(id) {
+  cur = id;
+  selected = new Set();
+  show("detail");
+  var m = provMeta(id);
+  document.getElementById("d_mark").innerHTML = esc(m.mark)
+    + '<img src="/static/admin/providers/' + m.id + '.png" width="40" height="40" alt="' + esc(m.name) + ' logo" onerror="this.remove()">';
+  document.getElementById("d_name").textContent = m.name;
+  document.title = "ToolNet Drama — " + m.name;
+  await loadDetail();
+}
+
+async function loadDetail() {
+  var e = document.getElementById("d_err");
+  var le = document.getElementById("l_err");
+  e.textContent = ""; le.textContent = "";
+  try {
+    await TN.ensureCsrf();
+    var j = await TN.api("/admin/api/providers/" + cur + "/connections");
+    var s = j.settings || {};
+    document.getElementById("s_strategy").value = s.strategy || "round_robin";
+    document.getElementById("s_rot").value = s.rotation_enabled ? "1" : "0";
+    document.getElementById("s_cd").value = s.cooldown_seconds || 300;
+    conns = j.connections || [];
+    selected = new Set([...selected].filter(function (id) { return conns.some(function (c) { return c.id === id; }); }));
+    var o = overallOf(conns);
+    document.getElementById("d_sub").textContent =
+      conns.length + " connection" + (conns.length === 1 ? "" : "s") + " · strategy " + (s.strategy || "round_robin").replace("_", " ");
+    document.getElementById("d_status").innerHTML = '<span class="badge ' + o.tone + '">' + esc(o.text) + "</span>";
+    renderConns("");
+  } catch (err) { e.textContent = err.message; }
+}
+
+function renderConns(filter) {
+  var list = document.getElementById("conn_list");
+  var q = (filter || "").toLowerCase().trim();
+  var rows = conns.filter(function (c) {
+    return !q || (c.name || "").toLowerCase().indexOf(q) !== -1;
+  });
+  document.getElementById("l_hint").textContent = conns.length ? conns.length + " total" : "";
+  updateSelBar();
+  if (!rows.length) {
+    list.innerHTML = '<div class="empty">No connections' + (conns.length ? " match." : " yet. Use Add Connection.") + "</div>";
+    return;
+  }
+  list.innerHTML = rows.map(connRow).join("");
+  list.querySelectorAll(".conn").forEach(function (el) {
+    var id = Number(el.dataset.id);
+    el.querySelector(".c-check input").addEventListener("change", function (ev) {
+      if (ev.target.checked) selected.add(id); else selected.delete(id);
+      updateSelBar();
+    });
+    el.querySelectorAll("[data-a]").forEach(function (b) {
+      b.addEventListener("click", function (ev) { connAction(id, b.dataset.a, ev.currentTarget, el); });
+    });
+    var tgl = el.querySelector(".switch");
+    tgl.addEventListener("click", function () { toggleConn(id, tgl); });
+  });
+  var all = document.getElementById("sel_all");
+  var visibleIds = rows.map(function (c) { return c.id; });
+  all.checked = visibleIds.length > 0 && visibleIds.every(function (id) { return selected.has(id); });
+}
+
+function connRow(c) {
+  var pct = Math.max(0, Math.min(100, c.quota_pct || 0));
+  var err = c.last_error ? '<span title="' + esc(c.last_error) + '">' + esc(c.last_error) + "</span>" : "";
+  var checked = selected.has(c.id) ? " checked" : "";
+  return '<div class="conn" data-id="' + c.id + '">'
+    + '<div class="conn-main">'
+    + '<span class="c-check"><input type="checkbox"' + checked + ' aria-label="Select ' + esc(c.name) + '"></span>'
+    + '<span class="c-name"><span class="t">' + esc(c.name) + '</span><span class="k">' + esc(c.key_hint || "") + "</span></span>"
+    + '<span class="c-status c-meta">' + stateBadge(c.state) + "</span>"
+    + '<span class="c-use c-meta"><span class="u">' + esc(c.quota_text || "") + '</span><span class="bar ' + barTone(c.quota_pct) + '"><i style="width:' + pct + '%"></i></span></span>'
+    + '<span class="c-quota c-meta">' + esc(c.quota_window || "") + "</span>"
+    + '<span class="c-err c-meta">' + err + "</span>"
+    + '<span class="c-acts">'
+    + '<button class="mini-btn" data-a="test">Test</button>'
+    + '<button class="mini-btn" data-a="expand">Details</button>'
+    + '<button class="mini-btn" data-a="edit">Edit</button>'
+    + '<button class="mini-btn" data-a="key">Key</button>'
+    + '<button class="mini-btn" data-a="clear">Clear</button>'
+    + '<button class="mini-btn danger" data-a="del">Delete</button>'
+    + "</span>"
+    + '<span class="c-toggle"><button class="switch" role="switch" aria-checked="' + (c.enabled ? "true" : "false") + '" aria-label="Enable ' + esc(c.name) + '"></button></span>'
+    + "</div>"
+    + '<div class="conn-detail"><dl class="kv tight">'
+    + "<dt>Priority</dt><dd>" + esc(c.priority) + "</dd>"
+    + "<dt>Reset at</dt><dd>" + esc(c.quota_reset_at || "—") + "</dd>"
+    + "<dt>Quota synced</dt><dd>" + esc(c.quota_synced_at || "never (owner-set or unused)") + "</dd>"
+    + "<dt>Key check</dt><dd>" + (c.key_valid == null ? "never checked" : (c.key_valid ? "valid (gateway accepted)" : "REJECTED (401/403)")) + "</dd>"
+    + "<dt>Endpoint</dt><dd>" + (c.endpoint_ok == null ? "unverified" : (c.endpoint_ok ? "verified (2xx)" : "FAILED (configured path)")) + "</dd>"
+    + "<dt>Health check</dt><dd>" + (c.last_check_at ? esc(c.last_check_at) + " · " + (c.last_check_ok ? "pass" : "fail") : "never") + "</dd>"
+    + "<dt>Cooldown until</dt><dd>" + esc(c.cooldown_until || "—") + "</dd>"
+    + "<dt>Last used</dt><dd>" + esc(c.last_used_at || "—") + "</dd>"
+    + "<dt>Failures</dt><dd>" + esc(c.consecutive_failures || 0) + "</dd>"
+    + "<dt>Created</dt><dd>" + esc(c.created_at || "—") + "</dd>"
+    + "</dl></div></div>";
+}
+
+function updateSelBar() {
+  document.getElementById("sel_info").textContent = selected.size + " selected";
+  document.getElementById("bulk_test").disabled = selected.size === 0;
+}
+
+/* ---------------- actions ---------------- */
+
+async function toggleConn(id, tgl) {
+  var le = document.getElementById("l_err");
+  le.textContent = "";
+  var c = conns.find(function (x) { return x.id === id; });
+  var enable = !(c && c.enabled);
+  tgl.disabled = true;
+  try {
+    await TN.api("/admin/api/providers/" + cur + "/connections/" + id + (enable ? "/enable" : "/disable"), { method: "POST" });
+    TN.toast(enable ? "Connection enabled" : "Connection disabled", enable ? "ok" : "warn");
+    await loadDetail();
+  } catch (err) { le.textContent = err.message; TN.toast(TN.shortErr(err), "bad"); tgl.disabled = false; }
+}
+
+async function connAction(id, a, btn, el) {
+  var le = document.getElementById("l_err");
+  le.textContent = "";
+  try {
+    if (a === "expand") { el.classList.toggle("open"); return; }
+    if (a === "test") {
+      await TN.withBusy(btn, async function () {
+        var r = await TN.api("/admin/api/providers/" + cur + "/connections/" + id + "/test", { method: "POST" });
+        TN.toast(r.detail || "Test finished", r.ok ? "ok" : "warn");
+      });
+      await loadDetail();
+      return;
+    }
+    if (a === "clear") {
+      await TN.withBusy(btn, async function () {
+        await TN.api("/admin/api/providers/" + cur + "/connections/" + id + "/clear-error", { method: "POST" });
+        TN.toast("Error cleared", "ok");
+      });
+      await loadDetail();
+      return;
+    }
+    if (a === "del") {
+      if (!confirm("Delete this connection? This cannot be undone.")) return;
+      await TN.withBusy(btn, async function () {
+        await TN.api("/admin/api/providers/" + cur + "/connections/" + id, { method: "DELETE" });
+        TN.toast("Connection deleted", "warn");
+      });
+      await loadDetail();
+      return;
+    }
+    if (a === "key") { openKeyModal(id); return; }
+    if (a === "edit") { openEditModal(id); return; }
+  } catch (err) { le.textContent = err.message; TN.toast(TN.shortErr(err), "bad"); }
+}
+
+function openKeyModal(id) {
+  var c = conns.find(function (x) { return x.id === id; });
+  var wrap = document.createElement("div");
+  var input = document.createElement("input");
+  input.type = "password";
+  input.autocomplete = "new-password";
+  input.placeholder = "New RapidAPI key";
+  wrap.appendChild(TN.fieldRow("New RapidAPI key", input, "Stored encrypted. Never shown again."));
+  TN.openModal("Replace key", (c ? c.name : "") + " · rotating resets errors and cooldown", wrap, [
+    { label: "Replace key", kind: "", onClick: function (b) {
+      var v = input.value.trim();
+      if (v.length < 8) { TN.markInvalid(input, "Key must be at least 8 characters."); return; }
+      TN.markInvalid(input, "");
+      TN.withBusy(b, async function () {
+        try {
+          await TN.api("/admin/api/providers/" + cur + "/connections/" + id + "/key",
+            { method: "POST", body: JSON.stringify({ api_key: v }) });
+          TN.closeModal();
+          TN.toast("Key replaced", "ok");
+          await loadDetail();
+        } catch (err) { TN.markInvalid(input, TN.shortErr(err)); }
+      });
+    } }
+  ]);
+}
+
+function openEditModal(id) {
+  var c = conns.find(function (x) { return x.id === id; });
+  if (!c) return;
+  var wrap = document.createElement("div");
+  wrap.style.display = "grid";
+  wrap.style.gap = "10px";
+  var nameI = document.createElement("input"); nameI.value = c.name || "";
+  var quotaI = document.createElement("input"); quotaI.type = "number"; quotaI.min = "1";
+  quotaI.value = c.quota_limit == null ? "" : c.quota_limit;
+  var winS = document.createElement("select");
+  winS.innerHTML = '<option value="daily">daily</option><option value="monthly">monthly</option>';
+  winS.value = c.quota_window || "monthly";
+  var priI = document.createElement("input"); priI.type = "number"; priI.min = "1"; priI.value = c.priority || 100;
+  wrap.appendChild(TN.fieldRow("Name", nameI, ""));
+  wrap.appendChild(TN.fieldRow("Quota limit (blank keeps current cap)", quotaI, ""));
+  wrap.appendChild(TN.fieldRow("Window (changing resets usage)", winS, ""));
+  wrap.appendChild(TN.fieldRow("Priority (lower fills first)", priI, ""));
+  TN.openModal("Edit connection", c.name || "", wrap, [
+    { label: "Save", kind: "", onClick: function (b) {
+      var body = {};
+      var n = nameI.value.trim();
+      if (n && n !== c.name) body.name = n;
+      if (quotaI.value.trim() !== "") body.quota_limit = parseInt(quotaI.value, 10);
+      if (winS.value !== c.quota_window) body.quota_window = winS.value;
+      var pr = parseInt(priI.value || "100", 10);
+      if (pr !== c.priority) body.priority = pr;
+      if (!Object.keys(body).length) { TN.closeModal(); return; }
+      TN.withBusy(b, async function () {
+        try {
+          await TN.api("/admin/api/providers/" + cur + "/connections/" + id,
+            { method: "PATCH", body: JSON.stringify(body) });
+          TN.closeModal();
+          TN.toast("Connection updated", "ok");
+          await loadDetail();
+        } catch (err) { TN.toast(TN.shortErr(err), "bad"); }
+      });
+    } }
+  ]);
+}
+
+function openAddModal() {
+  var wrap = document.createElement("div");
+  wrap.style.display = "grid";
+  wrap.style.gap = "10px";
+  var nameI = document.createElement("input"); nameI.placeholder = "rapidapi-3"; nameI.autocomplete = "off";
+  var keyI = document.createElement("input"); keyI.type = "password"; keyI.autocomplete = "new-password";
+  var quotaI = document.createElement("input"); quotaI.type = "number"; quotaI.min = "1"; quotaI.placeholder = "unlimited";
+  var winS = document.createElement("select");
+  winS.innerHTML = '<option value="monthly">monthly</option><option value="daily">daily</option>';
+  var priI = document.createElement("input"); priI.type = "number"; priI.min = "1"; priI.value = "100";
+  wrap.appendChild(TN.fieldRow("Connection name", nameI, ""));
+  wrap.appendChild(TN.fieldRow("RapidAPI key", keyI, "Encrypted at rest, never shown again."));
+  wrap.appendChild(TN.fieldRow("Quota limit", quotaI, "Blank = unlimited."));
+  wrap.appendChild(TN.fieldRow("Window", winS, ""));
+  wrap.appendChild(TN.fieldRow("Priority", priI, "Lower fills first."));
+  TN.openModal("Add Connection", provMeta(cur).name, wrap, [
+    { label: "Add Connection", kind: "", onClick: function (b) {
+      var ok = true;
+      if (!nameI.value.trim()) { TN.markInvalid(nameI, "Name is required."); ok = false; } else TN.markInvalid(nameI, "");
+      if (keyI.value.trim().length < 8) { TN.markInvalid(keyI, "Key must be at least 8 characters."); ok = false; } else TN.markInvalid(keyI, "");
+      if (!ok) return;
+      TN.withBusy(b, async function () {
+        try {
+          var q = quotaI.value.trim();
+          await TN.api("/admin/api/providers/" + cur + "/connections", {
+            method: "POST",
+            body: JSON.stringify({
+              name: nameI.value.trim(),
+              api_key: keyI.value.trim(),
+              quota_limit: q ? parseInt(q, 10) : null,
+              quota_window: winS.value,
+              priority: parseInt(priI.value || "100", 10)
+            })
+          });
+          TN.closeModal();
+          TN.toast("Connection added", "ok");
+          await loadDetail();
+        } catch (err) { TN.markInvalid(keyI, TN.shortErr(err)); }
+      });
+    } }
+  ]);
+}
+
+document.getElementById("open_add").addEventListener("click", openAddModal);
+
+document.getElementById("sel_all").addEventListener("change", function (ev) {
+  var check = ev.target.checked;
+  document.querySelectorAll("#conn_list .conn").forEach(function (el) {
+    var id = Number(el.dataset.id);
+    var box = el.querySelector(".c-check input");
+    box.checked = check;
+    if (check) selected.add(id); else selected.delete(id);
+  });
+  updateSelBar();
+});
+
+document.getElementById("bulk_test").addEventListener("click", function (ev) {
+  TN.withBusy(ev.currentTarget, async function () {
+    var ids = [...selected];
+    var okN = 0, failN = 0;
+    for (var i = 0; i < ids.length; i++) {
+      try {
+        var r = await TN.api("/admin/api/providers/" + cur + "/connections/" + ids[i] + "/test", { method: "POST" });
+        if (r.ok) okN++; else failN++;
+      } catch (e) { failN++; }
+    }
+    TN.toast("Tested " + ids.length + ": " + okN + " passed, " + failN + " failed", failN ? "warn" : "ok");
+    await loadDetail();
+  });
+});
+
+document.getElementById("s_save").addEventListener("click", function (ev) {
+  TN.withBusy(ev.currentTarget, async function () {
+    try {
+      await TN.api("/admin/api/providers/" + cur + "/settings", {
+        method: "PUT",
+        body: JSON.stringify({
+          strategy: document.getElementById("s_strategy").value,
+          rotation_enabled: document.getElementById("s_rot").value === "1",
+          cooldown_seconds: parseInt(document.getElementById("s_cd").value || "300", 10)
+        })
+      });
+      TN.toast("Strategy saved", "ok");
+      await loadDetail();
+    } catch (err) { document.getElementById("d_err").textContent = err.message; TN.toast(TN.shortErr(err), "bad"); }
+  });
+});
+
+route();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+[Unit]
+Description=ToolNet Drama API Gateway
+After=network.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/api-drama
+EnvironmentFile=/home/ubuntu/api-drama/.env
+ExecStart=/home/ubuntu/api-drama/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8090 --workers 1
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target
