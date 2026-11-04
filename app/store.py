@@ -77,7 +77,7 @@ def _get_postgres_connection() -> _DBWrapper:
         parsed = urlparse(settings.database_url)
         query = parse_qs(parsed.query)
         for k in list(query.keys()):
-            if k not in ("sslmode", "sslcert", "sslkey", "sslrootcert", "connect_timeout", "application_name"):
+            if k not in ("sslmode", "sslcert", "sslkey", "sslrootcert", "connect_timeout", "application_name", "ApplicationName"):
                 del query[k]
         clean_query = "&".join(f"{k}={v[0]}" for k, v in query.items())
         clean_dsn = f"postgresql://{parsed.username}:{parsed.password}@{parsed.hostname}:{parsed.port or 5432}{parsed.path}"
