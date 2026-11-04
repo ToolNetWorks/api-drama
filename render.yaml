@@ -1,0 +1,126 @@
+# ToolNet Drama API Gateway — Render Blueprint
+# Deploy: connect repo https://github.com/ToolNetWorks/api-drama → Render sẽ tự detect file này
+services:
+  # Web Service chính (API Gateway)
+  - type: web
+    name: api-drama
+    runtime: docker
+    repo: https://github.com/ToolNetWorks/api-drama
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free  # hoặc starter/standard tùy nhu cầu
+    region: singapore  # gần VN nhất
+    healthCheckPath: /health
+    numInstances: 1
+    envVars:
+      # Required: RapidAPI ReelShort credentials
+      - key: RAPIDAPI_REELSHORT_HOST
+        sync: false
+      - key: RAPIDAPI_REELSHORT_KEY_1
+        sync: false
+      - key: RAPIDAPI_REELSHORT_KEY_2
+        sync: false
+      - key: RAPIDAPI_REELSHORT_ENABLED
+        value: "true"
+      # Optional: upstream endpoint paths (điền khi đã verify RapidAPI docs)
+      - key: RAPIDAPI_REELSHORT_SEARCH_PATH
+        value: ""
+      - key: RAPIDAPI_REELSHORT_DETAIL_PATH
+        value: ""
+      - key: RAPIDAPI_REELSHORT_EPISODES_PATH
+        value: ""
+      - key: RAPIDAPI_REELSHORT_TEST_SERIES_ID
+        value: ""
+      - key: RAPIDAPI_REELSHORT_TEST_EPISODE_ID
+        value: ""
+      # Gateway secrets
+      - key: TOOLNET_MASTER_KEY
+        sync: false  # Fernet key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+      - key: MASTER_KEY
+        sync: false  # alias cho TOOLNET_MASTER_KEY
+      # Admin bootstrap (xóa ADMIN_PASSWORD sau lần login đầu)
+      - key: ADMIN_USERNAME
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      # Gateway behavior
+      - key: ALLOW_VIDEO_URLS
+        value: "false"
+      - key: REQUIRE_DISTRIBUTABLE_FLAG
+        value: "true"
+      - key: RATE_LIMIT_DEFAULT_RPM
+        value: "60"
+      - key: CACHE_TTL_SEARCH_S
+        value: "300"
+      - key: CACHE_TTL_DETAIL_S
+        value: "3600"
+      - key: CACHE_TTL_EPISODE_S
+        value: "600"
+      # Pool settings
+      - key: POOL_STRATEGY
+        value: "round_robin"
+      - key: POOL_ROTATION_ENABLED
+        value: "true"
+      - key: POOL_COOLDOWN_S
+        value: "300"
+      # Admin session
+      - key: ADMIN_SESSION_TTL_H
+        value: "12"
+      - key: COOKIE_SECURE
+        value: "true"  # Render có HTTPS sẵn
+      - key: LOGIN_MAX_ATTEMPTS
+        value: "10"
+      - key: LOGIN_WINDOW_S
+        value: "600"
+      # Paths (Render disk mount)
+      - key: DB_PATH
+        value: /srv/data/reelshort.sqlite3
+      - key: LOG_FILE
+        value: /srv/logs/api-drama.log
+      - key: GATEWAY_PORT
+        value: "8090"
+      # Upstream timeout
+      - key: UPSTREAM_TIMEOUT_S
+        value: "8"
+      - key: UPSTREAM_MAX_RETRIES
+        value: "1"
+    # Persistent Disk cho SQLite + logs
+    disk:
+      name: api-drama-data
+      mountPath: /srv/data
+      sizeGB: 1
+    # Logs disk (optional, có thể dùng chung disk trên)
+    # disk:
+    #   name: api-drama-logs
+    #   mountPath: /srv/logs
+    #   sizeGB: 1
+
+  # Optional: Episode Cache Worker (tách riêng để scale độc lập)
+  # - type: worker
+  #   name: api-drama-episode-cache
+  #   runtime: docker
+  #   repo: https://github.com/ToolNetWorks/api-drama
+  #   dockerfilePath: ./Dockerfile
+  #   dockerContext: .
+  #   plan: free
+  #   envVars:  # cùng env vars với web service
+  #     - key: RAPIDAPI_REELSHORT_HOST
+  #       sync: false
+  #     - key: RAPIDAPI_REELSHORT_KEY_1
+  #       sync: false
+  #     - key: RAPIDAPI_REELSHORT_KEY_2
+  #       sync: false
+  #     - key: TOOLNET_MASTER_KEY
+  #       sync: false
+  #     - key: DB_PATH
+  #       value: /srv/data/reelshort.sqlite3
+  #     - key: LOG_FILE
+  #       value: /srv/logs/episode-cache.log
+  #   # Worker dùng cùng disk với web service
+  #   disk:
+  #     name: api-drama-data
+  #     mountPath: /srv/data
+  #   # Command override cho worker (cần thêm entrypoint hoặc script)
+  #   startCommand: python -m app.episode_cache.worker
+
+databases: []  # Không dùng managed Postgres, dùng SQLite trên disk
