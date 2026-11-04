@@ -34,6 +34,8 @@ class _DBWrapper:
     def execute(self, query: str, params: tuple = ()) -> Any:
         """Execute query and return cursor."""
         if self._is_pg:
+            # Convert ? placeholders to %s for PostgreSQL
+            query = query.replace("?", "%s")
             cur = self._conn.cursor()
             cur.execute(query, params)
             return cur
