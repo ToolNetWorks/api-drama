@@ -104,7 +104,14 @@ def row_to_dict(row):
 
 def list_series(limit=30, offset=0):
     with connect() as db:
-        total = db.execute("SELECT COUNT(*) FROM series").fetchone()[0]
+        row = db.execute("SELECT COUNT(*) as c FROM series").fetchone()
+        if row is None:
+            total = 0
+        elif isinstance(row, tuple):
+            total = row[0]
+        else:
+            # sqlite3.Row or RealDictRow - both support key access
+            total = row["c"]
         rows = db.execute("SELECT * FROM series ORDER BY title LIMIT ? OFFSET ?", (limit, offset)).fetchall()
     return {"total": total, "limit": limit, "offset": offset, "items": [row_to_dict(r) for r in rows]}
 
