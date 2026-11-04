@@ -152,6 +152,7 @@ def v1_health():
                             "connections": len(rows), "healthy": healthy}
     except Exception as e:
         info["upstream"] = {"provider": "reelshort", "connections": "unknown", "error": str(e)}
+    return info
 
 
 @app.get("/v1/debug/db")
