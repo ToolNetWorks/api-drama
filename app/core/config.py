@@ -61,6 +61,11 @@ class Settings:
     cookie_secure: bool
     login_max_attempts: int
     login_window_s: int
+    # Database: PostgreSQL (Layerbase), libSQL (Turso/Layerbase), or local SQLite
+    database_url: str
+    auth_token: str
+    use_postgres: bool
+    use_libsql: bool
     db_path: Path
     log_file: Path
     gateway_port: int
@@ -76,6 +81,16 @@ def load_settings() -> Settings:
     strategy = os.getenv("POOL_STRATEGY", "round_robin").strip().lower()
     if strategy not in ("round_robin", "fill_first"):
         strategy = "round_robin"
+    
+    # Database config: PostgreSQL (Layerbase), libSQL (Turso/Layerbase), or local SQLite
+    database_url = _get("DATABASE_URL", "").strip()
+    auth_token = _get("DATABASE_AUTH_TOKEN", "").strip()
+    use_postgres = bool(database_url and database_url.startswith("postgresql://"))
+    use_libsql = bool(database_url and database_url.startswith("libsql://"))
+    
+    # Legacy SQLite path (used when not using postgres/libsql)
+    db_path = Path(_get("DB_PATH", str(ROOT / "data" / "reelshort.sqlite3")))
+    
     return Settings(
         rapid_host=_get("RAPIDAPI_REELSHORT_HOST", ""),
         rapid_key_1=_get("RAPIDAPI_REELSHORT_KEY_1", ""),
@@ -102,7 +117,11 @@ def load_settings() -> Settings:
         cookie_secure=_get_bool("COOKIE_SECURE", False),
         login_max_attempts=max(3, min(_get_int("LOGIN_MAX_ATTEMPTS", 10), 100)),
         login_window_s=max(60, min(_get_int("LOGIN_WINDOW_S", 600), 3600)),
-        db_path=Path(_get("DB_PATH", str(ROOT / "data" / "reelshort.sqlite3"))),
+        database_url=database_url,
+        auth_token=auth_token,
+        use_postgres=use_postgres,
+        use_libsql=use_libsql,
+        db_path=db_path,
         log_file=Path(_get("LOG_FILE", str(ROOT / "logs" / "api-drama.log"))),
         gateway_port=_get_int("GATEWAY_PORT", 8090),
     )

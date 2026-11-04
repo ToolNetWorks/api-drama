@@ -13,6 +13,7 @@ from cryptography.fernet import Fernet  # noqa: E402
 os.environ.setdefault("TOOLNET_MASTER_KEY", Fernet.generate_key().decode())
 # Tests must NEVER reach a real Turso database, whatever the developer's .env says.
 os.environ["EPISODE_CACHE_ENABLED"] = "false"
+os.environ["DATABASE_URL"] = ""  # Force SQLite for tests
 os.environ["TURSO_DATABASE_URL"] = ""
 os.environ["TURSO_AUTH_TOKEN"] = ""
 os.environ["ADMIN_SESSION_TTL_H"] = "1"
