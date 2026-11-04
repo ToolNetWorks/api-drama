@@ -5,7 +5,6 @@ expose only prefix + metadata. Mutations require session + CSRF.
 """
 from __future__ import annotations
 
-import sqlite3
 from datetime import datetime, timezone
 from typing import Any, Optional
 
@@ -35,10 +34,14 @@ def _validate_providers(raw: Any) -> Optional[str]:
     return _json.dumps(cleaned)
 
 
-def _parse_providers(row: sqlite3.Row) -> Optional[list]:
+def _parse_providers(row: Any) -> Optional[list]:
     import json as _json
 
-    raw = row["allowed_providers"] if "allowed_providers" in row.keys() else None
+    # Handle both sqlite3.Row (key access) and dict/RealDictRow (get method)
+    try:
+        raw = row["allowed_providers"]
+    except (KeyError, TypeError):
+        raw = row.get("allowed_providers") if hasattr(row, "get") else None
     if raw is None:
         return None  # legacy key: all providers
     try:
@@ -82,7 +85,7 @@ def _validate_expiry(raw: Optional[str]) -> Optional[str]:
     return dt.isoformat()
 
 
-def _public(row: sqlite3.Row) -> dict[str, Any]:
+def _public(row: Any) -> dict[str, Any]:
     d = dict(row)
     d.pop("key_hash", None)
     d["is_active"] = bool(d.get("is_active"))
@@ -97,12 +100,12 @@ async def list_keys(_a: dict = Depends(require_admin_session)):
         try:
             rows = db.execute(
                 "SELECT * FROM api_keys ORDER BY id DESC").fetchall()
-        except sqlite3.OperationalError:
+        except Exception:
             return {"ok": True, "keys": []}
     out = []
     for r in rows:
         d = _public(r)
-        d.update(_usage(db_row_id=r["id"]))
+        d.update(_usage(r["id"]))
         out.append(d)
     return {"ok": True, "keys": out}
 
@@ -139,7 +142,7 @@ async def get_key(key_id: int, _a: dict = Depends(require_admin_session)):
         if row is None:
             return _err(404, "Key not found")
         d = _public(row)
-        d.update(_usage(db_row_id=key_id))
+        d.update(_usage(key_id))
     return {"ok": True, "key": d}
 
 
@@ -208,20 +211,19 @@ def _set_active(key_id: int, active: bool):
     return {"ok": True, "key": _public(row)}
 
 
-def _usage(db_row_id: int) -> dict[str, Any]:
+def _usage(key_id: int) -> dict[str, Any]:
     from datetime import datetime, timezone
     now = datetime.now(timezone.utc)
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0).isoformat()
     month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0).isoformat()
     try:
         with store_connect() as db:
-            total = db.execute("SELECT COUNT(*) FROM request_logs WHERE key_id=?",
-                               (db_row_id,)).fetchone()[0]
+            total = db.execute("SELECT COUNT(*) FROM request_logs WHERE key_id=?", (key_id,)).fetchone()[0]
             today = db.execute("SELECT COUNT(*) FROM request_logs WHERE key_id=? AND created_at>=?",
-                               (db_row_id, day_start)).fetchone()[0]
+                               (key_id, day_start)).fetchone()[0]
             month = db.execute("SELECT COUNT(*) FROM request_logs WHERE key_id=? AND created_at>=?",
-                               (db_row_id, month_start)).fetchone()[0]
-    except sqlite3.OperationalError:
+                               (key_id, month_start)).fetchone()[0]
+    except Exception:
         total = today = month = 0
     _ = settings  # keep import used (rate defaults documented in dashboard)
     return {"usage_total": total, "usage_today": today, "usage_month": month}
