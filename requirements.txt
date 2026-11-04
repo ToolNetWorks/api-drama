@@ -6,5 +6,5 @@ python-dotenv>=1.0,<2
 cryptography>=41,<52
 argon2-cffi>=23,<26
 libsql>=0.1.11,<0.2
-psycopg2>=2.9,<3
+psycopg2-binary>=2.9,<3
 pytest>=8,<9
