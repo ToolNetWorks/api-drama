@@ -152,7 +152,6 @@ def v1_health():
                             "connections": len(rows), "healthy": healthy}
     except Exception as e:
         info["upstream"] = {"provider": "reelshort", "connections": "unknown", "error": str(e)}
-    return info
     # Status word only (no host/secrets). Turso trouble never flips the overall `ok`.
     try:
         from app import episode_cache as _ec

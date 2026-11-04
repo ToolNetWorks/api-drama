@@ -21,7 +21,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import sqlite3
 import time
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -41,11 +40,9 @@ logger = logging.getLogger("toolnet.upstream.reelshort")
 RETRYABLE_EXCEPTIONS = (httpx.TimeoutException, httpx.NetworkError, httpx.RemoteProtocolError)
 
 
-def _local_connect() -> sqlite3.Connection:
-    settings.db_path.parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(str(settings.db_path), timeout=15)
-    db.row_factory = sqlite3.Row
-    return db
+def _local_connect():
+    """Use the main store connection (Layerbase PostgreSQL) for series cache."""
+    return store_connect()
 
 
 def _row_to_series(row: sqlite3.Row) -> dict:
