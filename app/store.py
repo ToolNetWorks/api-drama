@@ -36,10 +36,19 @@ class _DBWrapper:
         if self._is_pg:
             # Convert ? placeholders to %s for PostgreSQL
             query = query.replace("?", "%s")
+            import psycopg2
             import psycopg2.extras
-            cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
-            cur.execute(query, params)
-            return cur
+            try:
+                cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute(query, params)
+                return cur
+            except (psycopg2.OperationalError, psycopg2.InterfaceError):
+                _postgres_local.conn = None
+                new_conn = _get_postgres_connection()
+                self._conn = new_conn._conn
+                cur = self._conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+                cur.execute(query, params)
+                return cur
         else:
             # SQLite and libSQL have execute method on connection
             return self._conn.execute(query, params)
@@ -87,7 +96,13 @@ def _get_postgres_connection() -> _DBWrapper:
         if clean_query:
             clean_dsn += f"?{clean_query}"
         
-        _postgres_local.conn = psycopg2.connect(clean_dsn)
+        _postgres_local.conn = psycopg2.connect(
+            clean_dsn,
+            keepalives=1,
+            keepalives_idle=30,
+            keepalives_interval=10,
+            keepalives_count=5,
+        )
         _postgres_local.conn.autocommit = True
         _postgres_local.conn.cursor_factory = psycopg2.extras.RealDictCursor
     return _DBWrapper(_postgres_local.conn)
