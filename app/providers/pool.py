@@ -123,7 +123,7 @@ def sync_quota_from_headers(db: sqlite3.Connection, conn_id: int, headers: Any) 
                    quota_reset_at=?, quota_synced_at=? WHERE id=?""",
                 (remaining, reset_at, now, conn_id),
             )
-    except (sqlite3.OperationalError, ValueError, TypeError, AttributeError):
+    except Exception:
         pass
 
 

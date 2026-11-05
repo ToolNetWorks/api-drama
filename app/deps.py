@@ -59,7 +59,7 @@ async def require_customer(request: Request,
     try:
         with store_connect() as db:
             row = db.execute("SELECT * FROM api_keys WHERE key_hash=?", (digest,)).fetchone()
-    except sqlite3.OperationalError:
+    except Exception:
         raise HTTPException(status_code=503, detail="UPSTREAM_ERROR: Service storage unavailable")
     if row is None or not row["is_active"] or row["revoked"]:
         raise HTTPException(status_code=401, detail="KEY_INVALID: Invalid or revoked API key")
@@ -74,25 +74,27 @@ async def require_customer(request: Request,
     try:
         with store_connect() as db:
             if key.get("daily_quota") is not None:
-                n = db.execute(
-                    "SELECT COUNT(*) FROM request_logs WHERE key_id=? AND created_at>=?",
-                    (key["id"], _day_start_iso())).fetchone()[0]
+                r = db.execute(
+                    "SELECT COUNT(*) as cnt FROM request_logs WHERE key_id=? AND created_at>=?",
+                    (key["id"], _day_start_iso())).fetchone()
+                n = (r.get("cnt") or r.get("count") or r[0]) if isinstance(r, dict) else (r[0] if r else 0)
                 if n >= int(key["daily_quota"]):
                     raise HTTPException(status_code=429, detail="QUOTA_EXCEEDED: Daily quota exceeded")
             if key.get("monthly_quota") is not None:
-                n = db.execute(
-                    "SELECT COUNT(*) FROM request_logs WHERE key_id=? AND created_at>=?",
-                    (key["id"], _month_start_iso())).fetchone()[0]
+                r = db.execute(
+                    "SELECT COUNT(*) as cnt FROM request_logs WHERE key_id=? AND created_at>=?",
+                    (key["id"], _month_start_iso())).fetchone()
+                n = (r.get("cnt") or r.get("count") or r[0]) if isinstance(r, dict) else (r[0] if r else 0)
                 if n >= int(key["monthly_quota"]):
                     raise HTTPException(status_code=429, detail="QUOTA_EXCEEDED: Monthly quota exceeded")
     except HTTPException:
         raise
-    except sqlite3.OperationalError:
+    except Exception:
         pass
     try:
         with store_connect() as db:
             db.execute("UPDATE api_keys SET last_used_at=? WHERE id=?", (utcnow(), key["id"]))
-    except sqlite3.OperationalError:
+    except Exception:
         pass
     key["request_id"] = request_id
     return key
@@ -172,5 +174,5 @@ def log_request(request_id: str, key_id: Optional[int], method: str, path: str,
                 (request_id, key_id, method, path[:300], status, upstream_status,
                  latency_ms, utcnow(), connection_id, provider),
             )
-    except sqlite3.OperationalError:
+    except Exception:
         pass  # logging must never break the request

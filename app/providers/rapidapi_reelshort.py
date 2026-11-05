@@ -21,6 +21,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import sqlite3
 import time
 from datetime import datetime, timezone
 from typing import Any, Optional
@@ -78,7 +79,7 @@ def _l2_get(cache_key: str) -> Optional[Any]:
             row = db.execute(
                 "SELECT payload, expires_at FROM cache_entries WHERE cache_key=?", (cache_key,)
             ).fetchone()
-    except sqlite3.OperationalError:
+    except Exception:
         return None
     if row is None:
         return None
@@ -107,7 +108,7 @@ def _l2_set(cache_key: str, value: Any, ttl_s: int) -> None:
                    expires_at=excluded.expires_at""",
                 (cache_key, json.dumps(value, default=str)[:200000], exp),
             )
-    except (sqlite3.OperationalError, ValueError, TypeError):
+    except Exception:
         pass
 
 
@@ -538,7 +539,7 @@ def _lookup_series_meta(series_id: str, payload: Any = None) -> Optional[dict]:
                 out.setdefault("episode_count", row["chapter_count"])
                 out.setdefault("description", row["description"])
                 out.setdefault("first_chapter_id", row["first_chapter_id"])
-    except sqlite3.OperationalError:
+    except Exception:
         pass
     return out if out else None
 
