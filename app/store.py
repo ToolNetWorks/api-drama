@@ -147,11 +147,12 @@ def connect() -> _DBWrapper:
 
 def _execute_migration_sql(db: _DBWrapper, sql: str) -> None:
     """Execute migration SQL, handling all backends."""
+    import re
     for stmt in sql.split(";"):
-        stmt = stmt.strip()
-        if stmt:
+        cleaned = re.sub(r"--.*$", "", stmt, flags=re.MULTILINE).strip()
+        if cleaned:
             try:
-                db.execute(stmt)
+                db.execute(stmt.strip())
             except Exception as e:
                 # Ignore "already exists" errors for idempotent migrations
                 err_str = str(e).lower()
@@ -239,45 +240,30 @@ def applied_versions(db: _DBWrapper) -> set[str]:
     return {r["version"] for r in rows}
 
 
+def _add_column_safely(db: _DBWrapper, table: str, column: str, col_type: str) -> None:
+    try:
+        db.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+    except Exception:
+        pass
+
+
 def _ensure_api_keys_columns(db: _DBWrapper) -> None:
-    if settings.use_postgres:
-        cols = {r["column_name"] for r in _fetchall(db, "SELECT column_name FROM information_schema.columns WHERE table_name='api_keys'")}
-    else:
-        cols = {r["name"] for r in _fetchall(db, "PRAGMA table_info(api_keys)")}
-    if "expires_at" not in cols:
-        db.execute("ALTER TABLE api_keys ADD COLUMN expires_at TEXT")
-    if "allowed_providers" not in cols:
-        db.execute("ALTER TABLE api_keys ADD COLUMN allowed_providers TEXT")
+    _add_column_safely(db, "api_keys", "expires_at", "TEXT")
+    _add_column_safely(db, "api_keys", "allowed_providers", "TEXT")
 
 
 def _ensure_request_logs_columns(db: _DBWrapper) -> None:
-    if settings.use_postgres:
-        cols = {r["column_name"] for r in _fetchall(db, "SELECT column_name FROM information_schema.columns WHERE table_name='request_logs'")}
-    else:
-        cols = {r["name"] for r in _fetchall(db, "PRAGMA table_info(request_logs)")}
-    if "connection_id" not in cols:
-        db.execute("ALTER TABLE request_logs ADD COLUMN connection_id INTEGER")
-    if "provider" not in cols:
-        db.execute("ALTER TABLE request_logs ADD COLUMN provider TEXT")
+    _add_column_safely(db, "request_logs", "connection_id", "INTEGER")
+    _add_column_safely(db, "request_logs", "provider", "TEXT")
 
 
 def _ensure_connection_health_columns(db: _DBWrapper) -> None:
-    if settings.use_postgres:
-        cols = {r["column_name"] for r in _fetchall(db, "SELECT column_name FROM information_schema.columns WHERE table_name='provider_connections'")}
-    else:
-        cols = {r["name"] for r in _fetchall(db, "PRAGMA table_info(provider_connections)")}
-    if "last_check_at" not in cols:
-        db.execute("ALTER TABLE provider_connections ADD COLUMN last_check_at TEXT")
-    if "last_check_ok" not in cols:
-        db.execute("ALTER TABLE provider_connections ADD COLUMN last_check_ok INTEGER")
-    if "key_valid" not in cols:
-        db.execute("ALTER TABLE provider_connections ADD COLUMN key_valid INTEGER")
-    if "endpoint_ok" not in cols:
-        db.execute("ALTER TABLE provider_connections ADD COLUMN endpoint_ok INTEGER")
-    if "quota_remaining" not in cols:
-        db.execute("ALTER TABLE provider_connections ADD COLUMN quota_remaining INTEGER")
-    if "quota_synced_at" not in cols:
-        db.execute("ALTER TABLE provider_connections ADD COLUMN quota_synced_at TEXT")
+    _add_column_safely(db, "provider_connections", "last_check_at", "TEXT")
+    _add_column_safely(db, "provider_connections", "last_check_ok", "INTEGER")
+    _add_column_safely(db, "provider_connections", "key_valid", "INTEGER")
+    _add_column_safely(db, "provider_connections", "endpoint_ok", "INTEGER")
+    _add_column_safely(db, "provider_connections", "quota_remaining", "INTEGER")
+    _add_column_safely(db, "provider_connections", "quota_synced_at", "TEXT")
 
 
 def _seed_connections_from_env(db: _DBWrapper) -> None:
@@ -332,6 +318,14 @@ def run_migrations() -> list[str]:
     files = sorted(MIGRATIONS_DIR.glob("*.sql"))
     db = _connect()
     try:
+        # Guarantee critical columns exist regardless of migration history
+        for helper in (_ensure_request_logs_columns, _ensure_api_keys_columns,
+                       _ensure_connection_health_columns):
+            try:
+                helper(db)
+            except Exception:
+                pass
+
         done = applied_versions(db)
         for path in files:
             version = path.stem

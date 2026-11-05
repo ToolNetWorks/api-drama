@@ -153,7 +153,7 @@ def health():
 @app.get("/v1/health")
 def v1_health():
     """Public gateway health: DB + pool summary. No secrets."""
-    info: dict = {"ok": True, "service": "api-drama-gateway", "commit": "b2_debug_episodes"}
+    info: dict = {"ok": True, "service": "api-drama-gateway", "commit": "b3_pool_fix"}
     try:
         from app.providers import pool as _pool
         from app.store import connect as _connect

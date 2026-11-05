@@ -235,9 +235,12 @@ async def _pooled_get(path_template: str, params: Optional[dict] = None,
             logger.info("upstream ok conn=%s latency_ms=%d", conn_name, latency_ms)
             if meta is not None:
                 meta["cache_control"] = resp.headers.get("cache-control")
-            with store_connect() as db:
-                pool.record_success(db, conn_id)
-                pool.mark_endpoint(db, conn_id, True)
+            try:
+                with store_connect() as db:
+                    pool.record_success(db, conn_id)
+                    pool.mark_endpoint(db, conn_id, True)
+            except Exception as db_err:
+                logger.warning("Failed updating conn metrics: %s", db_err)
             return _sanitize(body), conn_id, conn_name
 
     if last_err is not None:

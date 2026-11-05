@@ -277,20 +277,39 @@ def record_key_probe(db: sqlite3.Connection, conn_id: int, key_valid: bool) -> N
     probe path proves nothing about endpoints, and only 401/403 (handled by
     record_auth_failure) proves anything about the key beyond acceptance.
     """
-    db.execute(
-        """UPDATE provider_connections SET requests_used=requests_used+1,
-           key_valid=?, last_check_at=?, last_used_at=? WHERE id=?""",
-        (1 if key_valid else 0, utcnow(), utcnow(), conn_id),
-    )
+    try:
+        db.execute(
+            """UPDATE provider_connections SET requests_used=requests_used+1,
+               key_valid=?, last_check_at=?, last_used_at=? WHERE id=?""",
+            (1 if key_valid else 0, utcnow(), utcnow(), conn_id),
+        )
+    except Exception:
+        try:
+            db.execute(
+                """UPDATE provider_connections SET requests_used=requests_used+1,
+                   key_valid=?, last_used_at=? WHERE id=?""",
+                (1 if key_valid else 0, utcnow(), conn_id),
+            )
+        except Exception:
+            pass
 
 
 def mark_endpoint(db: sqlite3.Connection, conn_id: int, ok: bool) -> None:
     """Record a *verified-path* endpoint outcome (2xx only counts as ok)."""
-    db.execute(
-        """UPDATE provider_connections SET endpoint_ok=?, last_check_at=?,
-           last_check_ok=? WHERE id=?""",
-        (1 if ok else 0, utcnow(), 1 if ok else 0, conn_id),
-    )
+    try:
+        db.execute(
+            """UPDATE provider_connections SET endpoint_ok=?, last_check_at=?,
+               last_check_ok=? WHERE id=?""",
+            (1 if ok else 0, utcnow(), 1 if ok else 0, conn_id),
+        )
+    except Exception:
+        try:
+            db.execute(
+                """UPDATE provider_connections SET endpoint_ok=? WHERE id=?""",
+                (1 if ok else 0, conn_id),
+            )
+        except Exception:
+            pass
 
 
 def clear_error(db: sqlite3.Connection, conn_id: int) -> None:
