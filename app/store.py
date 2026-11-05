@@ -226,7 +226,7 @@ def applied_versions(db: _DBWrapper) -> set[str]:
 
 def _ensure_api_keys_columns(db: _DBWrapper) -> None:
     if settings.use_postgres:
-        cols = {r["name"] for r in _fetchall(db, "SELECT * FROM information_schema.columns WHERE table_name='api_keys'")}
+        cols = {r["column_name"] for r in _fetchall(db, "SELECT column_name FROM information_schema.columns WHERE table_name='api_keys'")}
     else:
         cols = {r["name"] for r in _fetchall(db, "PRAGMA table_info(api_keys)")}
     if "expires_at" not in cols:
@@ -237,7 +237,7 @@ def _ensure_api_keys_columns(db: _DBWrapper) -> None:
 
 def _ensure_request_logs_columns(db: _DBWrapper) -> None:
     if settings.use_postgres:
-        cols = {r["name"] for r in _fetchall(db, "SELECT * FROM information_schema.columns WHERE table_name='request_logs'")}
+        cols = {r["column_name"] for r in _fetchall(db, "SELECT column_name FROM information_schema.columns WHERE table_name='request_logs'")}
     else:
         cols = {r["name"] for r in _fetchall(db, "PRAGMA table_info(request_logs)")}
     if "connection_id" not in cols:
@@ -248,7 +248,7 @@ def _ensure_request_logs_columns(db: _DBWrapper) -> None:
 
 def _ensure_connection_health_columns(db: _DBWrapper) -> None:
     if settings.use_postgres:
-        cols = {r["name"] for r in _fetchall(db, "SELECT * FROM information_schema.columns WHERE table_name='provider_connections'")}
+        cols = {r["column_name"] for r in _fetchall(db, "SELECT column_name FROM information_schema.columns WHERE table_name='provider_connections'")}
     else:
         cols = {r["name"] for r in _fetchall(db, "PRAGMA table_info(provider_connections)")}
     if "last_check_at" not in cols:

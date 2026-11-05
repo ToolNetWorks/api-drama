@@ -121,16 +121,30 @@ async def create_key(body: CreateKeyBody, _a: dict = Depends(require_csrf)):
     if isinstance(providers_json, JSONResponse):
         return providers_json
     with store_connect() as db:
-        cur = db.execute(
-            """INSERT INTO api_keys (name, key_prefix, key_hash, is_active, revoked,
-               rpm, daily_quota, monthly_quota, created_at, last_used_at, expires_at,
-               allowed_providers)
-               VALUES (?, ?, ?, 1, 0, ?, ?, ?, ?, NULL, ?,
-               COALESCE(?, '["reelshort"]'))""",
-            (body.name.strip(), key_prefix(raw), hash_key(raw), body.rpm,
-             body.daily_quota, body.monthly_quota, now, expires, providers_json),
-        )
-        row = db.execute("SELECT * FROM api_keys WHERE id=?", (cur.lastrowid,)).fetchone()
+        if settings.use_postgres:
+            cur = db.execute(
+                """INSERT INTO api_keys (name, key_prefix, key_hash, is_active, revoked,
+                   rpm, daily_quota, monthly_quota, created_at, last_used_at, expires_at,
+                   allowed_providers)
+                   VALUES (?, ?, ?, 1, 0, ?, ?, ?, ?, NULL, ?,
+                   COALESCE(?, '["reelshort"]'))
+                   RETURNING id""",
+                (body.name.strip(), key_prefix(raw), hash_key(raw), body.rpm,
+                 body.daily_quota, body.monthly_quota, now, expires, providers_json),
+            )
+            new_id = cur.fetchone()["id"]
+        else:
+            cur = db.execute(
+                """INSERT INTO api_keys (name, key_prefix, key_hash, is_active, revoked,
+                   rpm, daily_quota, monthly_quota, created_at, last_used_at, expires_at,
+                   allowed_providers)
+                   VALUES (?, ?, ?, 1, 0, ?, ?, ?, ?, NULL, ?,
+                   COALESCE(?, '["reelshort"]'))""",
+                (body.name.strip(), key_prefix(raw), hash_key(raw), body.rpm,
+                 body.daily_quota, body.monthly_quota, now, expires, providers_json),
+            )
+            new_id = cur.lastrowid
+        row = db.execute("SELECT * FROM api_keys WHERE id=?", (new_id,)).fetchone()
     return {"ok": True, "api_key": raw, "warning": "Copy now — the full key is never shown again.",
             "key": _public(row)}
 
