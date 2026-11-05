@@ -278,9 +278,10 @@ class RapidApiReelShortProvider(DramaProvider):
                 logger.warning("upstream search failed (%s); falling back to local cache", exc.code)
         like = f"%{query.strip()}%" if query.strip() else "%"
         with _local_connect() as db:
-            total = db.execute(
-                "SELECT COUNT(*) FROM series WHERE title LIKE ? OR description LIKE ?",
-                (like, like)).fetchone()[0]
+            crow = db.execute(
+                "SELECT COUNT(*) as cnt FROM series WHERE title LIKE ? OR description LIKE ?",
+                (like, like)).fetchone()
+            total = (crow["cnt"] if isinstance(crow, dict) else crow[0]) if crow else 0
             rows = db.execute(
                 "SELECT * FROM series WHERE title LIKE ? OR description LIKE ? "
                 "ORDER BY title LIMIT ? OFFSET ?", (like, like, limit, offset)).fetchall()
