@@ -1,6 +1,7 @@
 """Customer gateway: /v1/reelshort/* (ToolNet API key, envelope, logging)."""
 from __future__ import annotations
 
+import logging
 import time
 from typing import Any
 
@@ -12,6 +13,7 @@ from app.deps import ensure_provider, log_request, require_customer
 from app.providers.base import UpstreamError
 from app.providers.rapidapi_reelshort import get_reelshort_provider
 
+logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/v1/reelshort", tags=["reelshort-v1"])
 
 
@@ -42,6 +44,10 @@ async def search(request: Request, q: str = Query("", max_length=200),
                     int((time.monotonic() - start) * 1000), provider="reelshort")
         return JSONResponse(status_code=exc.status,
                             content=fail(exc.code, exc.message, rid, exc.status))
+    except Exception as exc:
+        logger.exception("Failed in search: %s", exc)
+        return JSONResponse(status_code=500,
+                            content=fail("INTERNAL_ERROR", f"{type(exc).__name__}: {exc}", rid, 500))
 
 
 @router.get("/series/{series_id}")
@@ -66,6 +72,10 @@ async def series_detail(request: Request, series_id: str,
                     int((time.monotonic() - start) * 1000), provider="reelshort")
         return JSONResponse(status_code=exc.status,
                             content=fail(exc.code, exc.message, rid, exc.status))
+    except Exception as exc:
+        logger.exception("Failed in series_detail: %s", exc)
+        return JSONResponse(status_code=500,
+                            content=fail("INTERNAL_ERROR", f"{type(exc).__name__}: {exc}", rid, 500))
 
 
 @router.get("/series/{series_id}/episodes")
@@ -98,6 +108,10 @@ async def episode_list(request: Request, series_id: str,
                     exc.status, int((time.monotonic() - start) * 1000), provider="reelshort")
         return JSONResponse(status_code=exc.status,
                             content=fail(exc.code, exc.message, rid, exc.status))
+    except Exception as exc:
+        logger.exception("Failed in episode_list: %s", exc)
+        return JSONResponse(status_code=500,
+                            content=fail("INTERNAL_ERROR", f"{type(exc).__name__}: {exc}", rid, 500))
 
 
 @router.get("/series/{series_id}/episodes/{episode_id}")
@@ -122,3 +136,7 @@ async def episode_detail(request: Request, series_id: str, episode_id: str,
                     exc.status, int((time.monotonic() - start) * 1000), provider="reelshort")
         return JSONResponse(status_code=exc.status,
                             content=fail(exc.code, exc.message, rid, exc.status))
+    except Exception as exc:
+        logger.exception("Failed getting episode %s/%s: %s", series_id, episode_id, exc)
+        return JSONResponse(status_code=500,
+                            content=fail("INTERNAL_ERROR", f"{type(exc).__name__}: {exc}", rid, 500))

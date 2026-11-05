@@ -121,6 +121,28 @@ async def _http_exception_handler(request: Request, exc: HTTPException):
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
+@app.exception_handler(Exception)
+async def _unhandled_exception_handler(request: Request, exc: Exception):
+    import traceback
+    logger.exception("Global uncaught exception on path %s: %s", request.url.path, exc)
+    tb_lines = traceback.format_exc().splitlines()
+    rid = getattr(request.state, "request_id", uuid.uuid4().hex[:12])
+    return JSONResponse(
+        status_code=500,
+        content={
+            "success": False,
+            "data": None,
+            "error": {
+                "code": "INTERNAL_ERROR",
+                "message": f"{type(exc).__name__}: {str(exc)}",
+                "traceback": tb_lines[-8:],
+                "status": 500,
+            },
+            "request_id": rid,
+        },
+    )
+
+
 # -- legacy endpoints (unchanged behaviour) ---------------------------------
 
 @app.get("/health")
@@ -131,7 +153,7 @@ def health():
 @app.get("/v1/health")
 def v1_health():
     """Public gateway health: DB + pool summary. No secrets."""
-    info: dict = {"ok": True, "service": "api-drama-gateway", "commit": "b1_8703c8d"}
+    info: dict = {"ok": True, "service": "api-drama-gateway", "commit": "b2_debug_episodes"}
     try:
         from app.providers import pool as _pool
         from app.store import connect as _connect

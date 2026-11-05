@@ -28,11 +28,11 @@ services:
       - key: RAPIDAPI_REELSHORT_DETAIL_PATH
         value: ""
       - key: RAPIDAPI_REELSHORT_EPISODES_PATH
-        value: ""
+        value: "/reelshort/series/{id}/episodes/{episode_id}"
       - key: RAPIDAPI_REELSHORT_TEST_SERIES_ID
-        value: ""
+        value: "6a7619d41dcbbd8e12015bfe"
       - key: RAPIDAPI_REELSHORT_TEST_EPISODE_ID
-        value: ""
+        value: "8giu100fn0"
       # Gateway secrets
       - key: TOOLNET_MASTER_KEY
         sync: false  # Fernet key: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
@@ -45,9 +45,9 @@ services:
         sync: false
       # Gateway behavior
       - key: ALLOW_VIDEO_URLS
-        value: "false"
-      - key: REQUIRE_DISTRIBUTABLE_FLAG
         value: "true"
+      - key: REQUIRE_DISTRIBUTABLE_FLAG
+        value: "false"
       - key: RATE_LIMIT_DEFAULT_RPM
         value: "60"
       - key: CACHE_TTL_SEARCH_S
